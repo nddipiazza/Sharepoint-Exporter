@@ -1,8 +1,12 @@
 # Sharepoint-Exporter
 
+This project will make an export of all of your sharepoint site in a hierarchical metadata file folder format.
+
+## How to work on the Project
+
 Open the sln file in Visual Studio
 
-## Add the sharepoint client DLLs
+### Add the sharepoint client DLLs
 
 Copy 
 
@@ -11,11 +15,11 @@ Copy
  
 In Solution explorer, right click References -> Add reference -> Browser -> Add these two dll's
 
-## Add the System.Web.Extensions reference
+### Add the System.Web.Extensions reference
 
 Again In Solution explorer, right click References -> Add reference -> Assemblies -> Framework -> Click the check next to `System.Web.Extensions`
 
-# Running 
+## How to Run the program 
 
 `USAGE: SpPrefetchIndexBuilder.exe [siteUrl] [outputDir] [domain] [username]`
 
@@ -27,7 +31,7 @@ Again In Solution explorer, right click References -> Add reference -> Assemblie
 
 * If you specify your own domain and username, you will be prompted for a password. But you can also specify environment variable SP_PWD with the password to avoid this.
 
-# Output
+## Output
 
 It will create a folder with a GUID filename, and then fill it with each site by name.
 
