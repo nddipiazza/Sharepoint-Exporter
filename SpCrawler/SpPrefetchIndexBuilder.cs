@@ -55,7 +55,7 @@ namespace SpPrefetchIndexBuilder
             {
                 ClientContext clientContext = getClientContext(url);
                 Web oWebsite = clientContext.Web;
-                clientContext.Load(oWebsite, website => website.Webs, website => website.Title, website => website.Url, website => website.RoleDefinitions, website => website.RoleAssignments, website => website.HasUniqueRoleAssignments, website => website.Description);
+                clientContext.Load(oWebsite, website => website.Webs, website => website.Title, website => website.Url, website => website.RoleDefinitions, website => website.RoleAssignments, website => website.HasUniqueRoleAssignments, website => website.Description, website => website.Id);
                 clientContext.ExecuteQuery();
                 string path = parentPath + "\\" + oWebsite.Title;
                 DownloadWeb(clientContext, oWebsite, url, path);
@@ -68,6 +68,7 @@ namespace SpPrefetchIndexBuilder
             }
             catch (Exception ex)
             {
+
                 Console.WriteLine(ex.ToString());
             }
         }
