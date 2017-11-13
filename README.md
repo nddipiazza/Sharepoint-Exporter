@@ -14,7 +14,7 @@ https://www.microsoft.com/en-us/download/confirmation.aspx?id=35585 - SharePoint
 
 https://www.microsoft.com/en-us/download/details.aspx?id=51679 - SharePoint Server 2016 Client Components SDK 
  
-In Solution explorer, right click References -> Add reference -> Browser -> Add the following DLL's as listed in `%PROGRAMFILES%\SharePoint Client Components\redist.txt`
+In Solution explorer, right click References -> Add reference -> Browse -> Add the following DLL's as listed in `%PROGRAMFILES%\SharePoint Client Components\redist.txt`
 
 ```
 All files in:
