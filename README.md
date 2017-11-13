@@ -8,6 +8,11 @@ Open the sln file in Visual Studio
 
 ### Add the sharepoint client DLLs
 
+Download the Sharepoint Client Component SDK for the version of Sharepoint you are using:
+
+https://www.microsoft.com/en-us/download/confirmation.aspx?id=35585 - 2013
+https://www.microsoft.com/en-us/download/details.aspx?id=51679 - 2016
+
 Copy 
 
 	* Microsoft.SharePoint.Client.dll
