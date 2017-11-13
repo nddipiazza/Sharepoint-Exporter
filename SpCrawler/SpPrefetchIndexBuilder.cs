@@ -191,6 +191,20 @@ namespace SpPrefetchIndexBuilder
                     }
                     itemDict.Add("RoleAssignments", roleAssignmentDict);
                     itemDict.Add("FieldValues", listItem.FieldValues);
+                    if (listItem.FieldValues.ContainsKey("Attachments") && (bool)listItem.FieldValues["Attachments"])
+                    {
+                        clientContext.Load(listItem.AttachmentFiles);
+                        clientContext.ExecuteQuery();
+                        List<Dictionary<string, object>> attachmentFileList = new List<Dictionary<string, object>>();
+                        foreach (Attachment attachmentFile in listItem.AttachmentFiles)
+                        {
+                            Dictionary<string, object> attachmentFileDict = new Dictionary<string, object>();
+                            attachmentFileDict.Add("ServerRelativeUrl", attachmentFile.ServerRelativeUrl);
+                            attachmentFileDict.Add("FileName", attachmentFile.FileName);
+                            attachmentFileList.Add(attachmentFileDict);
+                        }
+                        itemDict.Add("AttachmentFiles", attachmentFileList);
+                    }
                     itemsList.Add(itemDict);
                 }
                 listDict.Add("Items", itemsList);
