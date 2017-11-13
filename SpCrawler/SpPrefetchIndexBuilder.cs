@@ -20,10 +20,10 @@ namespace SpPrefetchIndexBuilder
         {
             Stopwatch sw = Stopwatch.StartNew();
             serializer.MaxJsonLength = 209715200;
-            if (args.Length >= 2 && (args[0].Equals("--help") || args[0].Equals("-help") || args[0].Equals("/help") || args.Length > 4 || args.Length == 3))
+            if (args.Length >= 2 && (args[0].Equals("--help") || args[0].Equals("-help") || args[0].Equals("/help") || args.Length > 5 || args.Length == 3))
             {
 
-                Console.WriteLine("USAGE: SpPrefetchIndexBuilder.exe [siteUrl] [outputDir] [domain] [username]");
+                Console.WriteLine("USAGE: SpPrefetchIndexBuilder.exe [siteUrl] [outputDir] [domain] [username] [password (not recommended, do not specify to be prompted or use SP_PWD environment variable)]");
             }
             site = args.Length > 0 ? args[0] : defaultSite;
             baseDir = args.Length > 1 ? args[1] : System.IO.Directory.GetCurrentDirectory();
@@ -33,10 +33,22 @@ namespace SpPrefetchIndexBuilder
             }
             if (args.Length > 2)
             {
-                Console.WriteLine("Please enter password for {0}", args[3]);
                 cc = new CredentialCache();
                 String spPassword = Environment.GetEnvironmentVariable("SP_PWD");
-                NetworkCredential nc = spPassword == null ? new NetworkCredential(args[3], GetPassword(), args[2]) : new NetworkCredential(args[3], spPassword, args[2]);
+                if (spPassword == null)
+                {
+                    spPassword = args[4];
+                }
+                NetworkCredential nc;
+                if (spPassword == null)
+                {
+                    Console.WriteLine("Please enter password for {0}", args[3]);
+                    nc = new NetworkCredential(args[3], GetPassword(), args[2]);
+                }
+                else
+                {
+                    nc = new NetworkCredential(args[3], spPassword, args[2]);
+                }
                 cc.Add(new Uri(site), "NTLM", nc);
             }
             getSubWebs(site, baseDir + "\\" + Guid.NewGuid().ToString());
@@ -80,11 +92,11 @@ namespace SpPrefetchIndexBuilder
         {
             Console.WriteLine("Exporting site {0}", url);
             System.IO.Directory.CreateDirectory(path);
-            Dictionary<string, object> siteDict = new Dictionary<string, object>();
-            siteDict.Add("Title", web.Title);
-            siteDict.Add("Id", web.Id);
-            siteDict.Add("Description", web.Description);
-            siteDict.Add("Url", url);
+            Dictionary<string, object> webDict = new Dictionary<string, object>();
+            webDict.Add("Title", web.Title);
+            webDict.Add("Id", web.Id);
+            webDict.Add("Description", web.Description);
+            webDict.Add("Url", url);
             if (web.HasUniqueRoleAssignments)
             {
                 List<object[]> roleDefArray = new List<object[]>();
@@ -92,7 +104,7 @@ namespace SpPrefetchIndexBuilder
                 {
                     roleDefArray.Add(new object[] { roleDefition.Id, roleDefition.Name, roleDefition.RoleTypeKind});
                 }
-                siteDict.Add("RoleDefinitions", roleDefArray);
+                webDict.Add("RoleDefinitions", roleDefArray);
                 clientContext.Load(web.RoleAssignments,
                     roleAssignment => roleAssignment.Include(
                             item => item.PrincipalId,
@@ -110,10 +122,10 @@ namespace SpPrefetchIndexBuilder
                     }
                     roleAssignmentDict.Add(roleAssignment.Member.LoginName, defs);
                 }
-                siteDict.Add("RoleAssignments", roleAssignmentDict);
+                webDict.Add("RoleAssignments", roleAssignmentDict);
             }
-            string siteJsonPath = path + "\\site.json";
-            System.IO.File.WriteAllText(siteJsonPath, serializer.Serialize(siteDict));
+            string siteJsonPath = path + "\\web.json";
+            System.IO.File.WriteAllText(siteJsonPath, serializer.Serialize(webDict));
             Console.WriteLine("Exported site properties for site {0} to {1}", url, siteJsonPath);
 
             ListCollection lists = web.Lists;
@@ -124,10 +136,16 @@ namespace SpPrefetchIndexBuilder
             Dictionary<string, object> listsDict = new Dictionary<string, object>();
             foreach (List list in lists)
             {
-                Dictionary<string, object> listDict = new Dictionary<string, object>();
+                // All sites have a few lists that we don't care about exporting. Exclude these.
+                if (list.Title.Equals("Composed Looks") || list.Title.Equals("Master Page Gallery") || list.Title.Equals("Site Assets") || list.Title.Equals("Site Pages"))
+                {
+                    continue;
+                }
+                Dictionary <string, object> listDict = new Dictionary<string, object>();
                 listDict.Add("Id", list.Id);
                 listDict.Add("Title", list.Title);
                 CamlQuery camlQuery = new CamlQuery();
+                camlQuery.ViewXml = "<View Scope=\"RecursiveAll\"></View>";
                 ListItemCollection collListItem = list.GetItems(camlQuery);
                 clientContext.Load(collListItem);
                 clientContext.Load(collListItem,
@@ -150,6 +168,7 @@ namespace SpPrefetchIndexBuilder
                     }
                 }
                 clientContext.Load(list.RootFolder.Files);
+                clientContext.Load(list.RootFolder.Folders);
                 clientContext.ExecuteQuery();
                 List<Dictionary<string, object>> itemsList = new List<Dictionary<string, object>>();
                 foreach (ListItem listItem in collListItem)
@@ -175,18 +194,11 @@ namespace SpPrefetchIndexBuilder
                     itemsList.Add(itemDict);
                 }
                 listDict.Add("Items", itemsList);
-                Dictionary<string, object> filesDict = new Dictionary<string, object>();
-                foreach (Microsoft.SharePoint.Client.File file in list.RootFolder.Files)
-                {
-                    Dictionary<string, object> fileDict = new Dictionary<string, object>();
-                    fileDict.Add("Title", file.Title);
-                    fileDict.Add("TimeCreated", file.TimeCreated);
-                    fileDict.Add("TimeLastModified", file.TimeLastModified);
- //                   fileDict.Add("Author.LoginName", file.Author.LoginName);
-                    fileDict.Add("Name", file.Name);
-                    filesDict.Add(file.Name, fileDict);
-                }
-                listDict.Add("Files", filesDict);
+                clientContext.Load(list.RootFolder);
+                clientContext.Load(list.RootFolder.Files);
+                clientContext.Load(list.RootFolder.Folders);
+                clientContext.ExecuteQuery();
+                listDict.Add("Files", IndexFolder(clientContext, list.RootFolder));
                 if (listsDict.ContainsKey(list.Id.ToString()))
                 {
                     Console.WriteLine("Duplicate key " + list.Id);
@@ -195,11 +207,46 @@ namespace SpPrefetchIndexBuilder
                 {
                     listsDict.Add(list.Id.ToString(), listDict);
                 }
-                
             }
             string listJsonPath = path + "\\lists.json";
             Console.WriteLine("Exported lists for site {0} to {1}", url, listJsonPath);
             System.IO.File.WriteAllText(listJsonPath, serializer.Serialize(listsDict));
+        }
+
+        static public List<Dictionary<string, object>> IndexFolder(ClientContext clientContext, Folder folder)
+        {
+            List<Dictionary<string, object>> files = new List<Dictionary<string, object>>();
+            foreach (File file in folder.Files)
+            {
+                Dictionary<string, object> fileDict = new Dictionary<string, object>();
+                fileDict.Add("Title", file.Title);
+                fileDict.Add("FileType", "file");
+                fileDict.Add("Name", file.Name);
+                fileDict.Add("TimeCreated", file.TimeCreated);
+                fileDict.Add("TimeLastModified", file.TimeLastModified);
+                // TODO: how do i get the author info to return? it gives me error when I try to get it.
+                // fileDict.Add("Author.LoginName", file.Author.LoginName);
+                fileDict.Add("ServerRelativeUrl", file.ServerRelativeUrl);
+                files.Add(fileDict);
+            }
+            Dictionary<string, object> foldersDict = new Dictionary<string, object>();
+            foreach (Folder innerFolder in folder.Folders)
+            {
+                clientContext.Load(innerFolder);
+                clientContext.Load(innerFolder.Files);
+                clientContext.Load(innerFolder.Folders);
+                clientContext.ExecuteQuery();
+                Dictionary<string, object> innerFolderDict = new Dictionary<string, object>();
+                innerFolderDict.Add("Name", innerFolder.Name);
+                innerFolderDict.Add("FileType", "folder");
+                //innerFolderDict.Add("Properties", innerFolder.Properties);
+                innerFolderDict.Add("WelcomePage", innerFolder.WelcomePage);
+                innerFolderDict.Add("ServerRelativeUrl", innerFolder.ServerRelativeUrl);
+                innerFolderDict.Add("ParentServerRelativeUrl", folder.ServerRelativeUrl);
+                innerFolderDict.Add("Files", IndexFolder(clientContext, innerFolder));
+                files.Add(innerFolderDict);
+            }
+            return files;
         }
 
         static public SecureString GetPassword()
