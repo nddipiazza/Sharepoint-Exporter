@@ -52,11 +52,17 @@ Again In Solution explorer, right click References -> Add reference -> Assemblie
 
 * If you specify your own domain and username, you will be prompted for a password. But you can also specify environment variable SP_PWD with the password to avoid this.
 
-## Output
+## What does it output?
 
 It will create a folder with a GUID filename, and then fill it with each site by name.
 
+```
 SiteName
-	SiteName
-		SiteName
+   -->  site.json
+	lists.json (if it has lists)
+	SubSiteName
+        --> site.json
+	    lists.json (if it has lists	
+	SubSiteName
 		...
+```
