@@ -1,0 +1,7 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/SpCrawler/obj
+/SpCrawler/bin
+/.vs/SpPrefetchIndexBuilder/v15

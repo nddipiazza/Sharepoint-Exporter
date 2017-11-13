@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Net;
+using System.Diagnostics;
 using System.Security;
 using System.Collections.Generic;
 using System.Web.Script.Serialization;
@@ -17,9 +18,11 @@ namespace SpPrefetchIndexBuilder
 
         static void Main(string[] args)
         {
+            Stopwatch sw = Stopwatch.StartNew();
             serializer.MaxJsonLength = 209715200;
             if (args.Length >= 2 && (args[0].Equals("--help") || args[0].Equals("-help") || args[0].Equals("/help") || args.Length > 4 || args.Length == 3))
             {
+
                 Console.WriteLine("USAGE: SpPrefetchIndexBuilder.exe [siteUrl] [outputDir] [domain] [username]");
             }
             site = args.Length > 0 ? args[0] : defaultSite;
@@ -37,6 +40,7 @@ namespace SpPrefetchIndexBuilder
                 cc.Add(new Uri(site), "NTLM", nc);
             }
             getSubWebs(site, baseDir + "\\" + Guid.NewGuid().ToString());
+            Console.WriteLine("Export complete. Took {0} milliseconds.", sw.ElapsedMilliseconds);
         }
 
         public static ClientContext getClientContext(string site)
@@ -61,8 +65,7 @@ namespace SpPrefetchIndexBuilder
                 DownloadWeb(clientContext, oWebsite, url, path);
                 foreach (Web orWebsite in oWebsite.Webs)
                 {
-                    string newUrl = site + orWebsite.ServerRelativeUrl;
-                    getSubWebs(newUrl, path);
+                    getSubWebs(orWebsite.Url, path);
 
                 }
             }
@@ -75,6 +78,7 @@ namespace SpPrefetchIndexBuilder
 
         static void DownloadWeb(ClientContext clientContext, Web web, string url, string path)
         {
+            Console.WriteLine("Exporting site {0}", url);
             System.IO.Directory.CreateDirectory(path);
             Dictionary<string, object> siteDict = new Dictionary<string, object>();
             siteDict.Add("Title", web.Title);
@@ -108,7 +112,9 @@ namespace SpPrefetchIndexBuilder
                 }
                 siteDict.Add("RoleAssignments", roleAssignmentDict);
             }
-            System.IO.File.WriteAllText(path + "\\site.json", serializer.Serialize(siteDict));
+            string siteJsonPath = path + "\\site.json";
+            System.IO.File.WriteAllText(siteJsonPath, serializer.Serialize(siteDict));
+            Console.WriteLine("Exported site properties for site {0} to {1}", url, siteJsonPath);
 
             ListCollection lists = web.Lists;
 
@@ -172,7 +178,13 @@ namespace SpPrefetchIndexBuilder
                 Dictionary<string, object> filesDict = new Dictionary<string, object>();
                 foreach (Microsoft.SharePoint.Client.File file in list.RootFolder.Files)
                 {
-                    filesDict.Add(file.Name, file.Properties.FieldValues);
+                    Dictionary<string, object> fileDict = new Dictionary<string, object>();
+                    fileDict.Add("Title", file.Title);
+                    fileDict.Add("TimeCreated", file.TimeCreated);
+                    fileDict.Add("TimeLastModified", file.TimeLastModified);
+ //                   fileDict.Add("Author.LoginName", file.Author.LoginName);
+                    fileDict.Add("Name", file.Name);
+                    filesDict.Add(file.Name, fileDict);
                 }
                 listDict.Add("Files", filesDict);
                 if (listsDict.ContainsKey(list.Id.ToString()))
@@ -185,7 +197,9 @@ namespace SpPrefetchIndexBuilder
                 }
                 
             }
-            System.IO.File.WriteAllText(path + "\\lists.json", serializer.Serialize(listsDict));
+            string listJsonPath = path + "\\lists.json";
+            Console.WriteLine("Exported lists for site {0} to {1}", url, listJsonPath);
+            System.IO.File.WriteAllText(listJsonPath, serializer.Serialize(listsDict));
         }
 
         static public SecureString GetPassword()
