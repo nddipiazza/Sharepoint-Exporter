@@ -20,6 +20,11 @@ namespace SpPrefetchIndexBuilder
         static void Main(string[] args)
         {
             Stopwatch sw = Stopwatch.StartNew();
+            String spMaxFileSizeBytes = Environment.GetEnvironmentVariable("SP_MAX_FILE_SIZE_BYTES");
+            if (spMaxFileSizeBytes != null)
+            {
+                maxFileSizeBytes = int.Parse(spMaxFileSizeBytes);
+            }
             serializer.MaxJsonLength = 209715200;
             if (args.Length >= 2 && (args[0].Equals("--help") || args[0].Equals("-help") || args[0].Equals("/help") || args.Length > 5 || args.Length == 3))
             {
@@ -34,16 +39,11 @@ namespace SpPrefetchIndexBuilder
             }
             if (args.Length > 2)
             {
-                String spMaxFileSizeBytes = Environment.GetEnvironmentVariable("SP_MAX_FILE_SIZE_BYTES");
-                if (spMaxFileSizeBytes != null)
-                {
-                    maxFileSizeBytes = int.Parse(spMaxFileSizeBytes);
-                }
                 cc = new CredentialCache();
                 String spPassword = Environment.GetEnvironmentVariable("SP_PWD");
                 if (spPassword == null)
                 {
-                    spPassword = args[4];
+                    spPassword = args.Length >= 5 ? args[4] : null;
                 }
                 NetworkCredential nc;
                 if (spPassword == null)
@@ -73,24 +73,16 @@ namespace SpPrefetchIndexBuilder
 
         public static void getSubWebs(string url, string parentPath)
         {
-            try
+            ClientContext clientContext = getClientContext(url);
+            Web oWebsite = clientContext.Web;
+            clientContext.Load(oWebsite, website => website.Webs, website => website.Title, website => website.Url, website => website.RoleDefinitions, website => website.RoleAssignments, website => website.HasUniqueRoleAssignments, website => website.Description, website => website.Id, website => website.LastItemModifiedDate);
+            clientContext.ExecuteQuery();
+            string path = parentPath + "\\" + oWebsite.Id;
+            DownloadWeb(clientContext, oWebsite, url, path);
+            foreach (Web orWebsite in oWebsite.Webs)
             {
-                ClientContext clientContext = getClientContext(url);
-                Web oWebsite = clientContext.Web;
-                clientContext.Load(oWebsite, website => website.Webs, website => website.Title, website => website.Url, website => website.RoleDefinitions, website => website.RoleAssignments, website => website.HasUniqueRoleAssignments, website => website.Description, website => website.Id, website => website.LastItemModifiedDate);
-                clientContext.ExecuteQuery();
-                string path = parentPath + "\\" + oWebsite.Id;
-                DownloadWeb(clientContext, oWebsite, url, path);
-                foreach (Web orWebsite in oWebsite.Webs)
-                {
-                    getSubWebs(orWebsite.Url, path);
+                getSubWebs(orWebsite.Url, path);
 
-                }
-            }
-            catch (Exception ex)
-            {
-
-                Console.WriteLine(ex.ToString());
             }
         }
 
@@ -138,18 +130,13 @@ namespace SpPrefetchIndexBuilder
             Dictionary<string, object> listsDict = new Dictionary<string, object>();
             foreach (List list in lists)
             {
-                clientContext.Load(list, lslist => lslist.HasUniqueRoleAssignments, lslist => lslist.Title, lslist => lslist.BaseType, lslist => lslist.Description, lslist => lslist.LastItemModifiedDate, lslist => lslist.RootFolder, lslist => lslist.DefaultDisplayFormUrl);
                 // All sites have a few lists that we don't care about exporting. Exclude these.
                 if (list.Title.Equals("Composed Looks") || list.Title.Equals("Master Page Gallery") || list.Title.Equals("Site Assets") || list.Title.Equals("Site Pages"))
                 {
                     continue;
                 }
-                Dictionary <string, object> listDict = new Dictionary<string, object>();
-                listDict.Add("Id", list.Id);
-                listDict.Add("Title", list.Title);
-                listDict.Add("BaseType", list.BaseType.ToString());
-                listDict.Add("Description", list.Description);
-                listDict.Add("LastItemModifiedDate", list.LastItemModifiedDate.ToString());
+                clientContext.Load(list, lslist => lslist.HasUniqueRoleAssignments, lslist => lslist.Title, lslist => lslist.BaseType, lslist => lslist.Description, lslist => lslist.LastItemModifiedDate, lslist => lslist.RootFolder, lslist => lslist.DefaultDisplayFormUrl);
+                clientContext.ExecuteQuery();
                 CamlQuery camlQuery = new CamlQuery();
                 camlQuery.ViewXml = "<View Scope=\"RecursiveAll\"></View>";
                 ListItemCollection collListItem = list.GetItems(camlQuery);
@@ -158,22 +145,10 @@ namespace SpPrefetchIndexBuilder
                   items => items.Include(
                      item => item.Id,
                      item => item.DisplayName,
-                     item => item.HasUniqueRoleAssignments));
-                
-                clientContext.ExecuteQuery();
-                foreach (ListItem listItem in collListItem)
-                {
-                    if (listItem.HasUniqueRoleAssignments)
-                    {
-                        clientContext.Load(listItem.RoleAssignments,
-                            roleAssignments => roleAssignments.Include(
-                                    item => item.PrincipalId,
-                                    item => item.Member.LoginName,
-                                    item => item.Member.PrincipalType,
-                                    item => item.RoleDefinitionBindings
-                            ));
-                    }
-                }
+                     item => item.HasUniqueRoleAssignments,
+                     item => item.RoleAssignments,
+                     item => item.Folder,
+                     item => item.File));
                 clientContext.Load(list.RootFolder.Files);
                 clientContext.Load(list.RootFolder.Folders);
                 clientContext.Load(list.RootFolder);
@@ -184,13 +159,24 @@ namespace SpPrefetchIndexBuilder
                                 item => item.Member.PrincipalType,
                                 item => item.RoleDefinitionBindings
                         ));
-                clientContext.ExecuteQuery();
+                try
+                {
+                    clientContext.ExecuteQuery();
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine("Could not fetch " + list.Id + " because of error " + e.Message);
+                    continue;
+                }
+                Dictionary<string, object> listDict = new Dictionary<string, object>();
+                listDict.Add("Id", list.Id);
+                listDict.Add("Title", list.Title);
+                listDict.Add("BaseType", list.BaseType.ToString());
+                listDict.Add("Description", list.Description);
+                listDict.Add("LastItemModifiedDate", list.LastItemModifiedDate.ToString());
                 List<Dictionary<string, object>> itemsList = new List<Dictionary<string, object>>();
                 foreach (ListItem listItem in collListItem)
                 {
-                    clientContext.Load(listItem.Folder);
-                    clientContext.Load(listItem.File);
-                    clientContext.ExecuteQuery();
                     Dictionary<string, object> itemDict = new Dictionary<string, object>();
                     itemDict.Add("DisplayName", listItem.DisplayName);
                     itemDict.Add("Id", listItem.Id);
@@ -200,15 +186,14 @@ namespace SpPrefetchIndexBuilder
                         itemDict.Add("ListItemType", "List_Item");
                         if (maxFileSizeBytes < 0 || (int)itemDict["File_x0020_Size"] < maxFileSizeBytes)
                         {
-                            string filePath = path + "\\" + list.Id + "_" + listItem.Id + System.IO.Path.GetExtension(listItem.File.Name);
-                            var fileInfo = File.OpenBinaryDirect(clientContext, listItem.File.ServerRelativeUrl);
-                            using (var fileStream = System.IO.File.Create(filePath))
-                            {
-                                fileInfo.Stream.CopyTo(fileStream);
-                            }
-                            itemDict.Add("FileExportPath", filePath);
+                            //string filePath = path + "\\" + list.Id + "_" + listItem.Id + System.IO.Path.GetExtension(listItem.File.Name);
+                            //var fileInfo = File.OpenBinaryDirect(clientContext, listItem.File.ServerRelativeUrl);
+                            //using (var fileStream = System.IO.File.Create(filePath))
+                            //{
+                            //    fileInfo.Stream.CopyTo(fileStream);
+                            //}
+                            //itemDict.Add("FileExportPath", filePath);
                         }
-                        
                     }
                     else if (listItem.Folder.ServerObjectIsNull == false)
                     {
@@ -221,6 +206,13 @@ namespace SpPrefetchIndexBuilder
                     itemDict.Add("Url", site + list.DefaultDisplayFormUrl + string.Format("?ID={0}", listItem.Id));
                     if (listItem.HasUniqueRoleAssignments)
                     {
+                        clientContext.Load(listItem.RoleAssignments,
+                            ras => ras.Include(
+                                    item => item.PrincipalId,
+                                    item => item.Member.LoginName,
+                                    item => item.Member.PrincipalType,
+                                    item => item.RoleDefinitionBindings));
+                                    clientContext.ExecuteQuery();
                         SetRoleAssignments(listItem.RoleAssignments, itemDict);
                     }
                     itemDict.Add("FieldValues", listItem.FieldValues);
