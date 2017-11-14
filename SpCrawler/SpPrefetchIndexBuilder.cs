@@ -51,7 +51,7 @@ namespace SpPrefetchIndexBuilder
                 }
                 cc.Add(new Uri(site), "NTLM", nc);
             }
-            getSubWebs(site, baseDir + "\\" + Guid.NewGuid().ToString());
+            getSubWebs(site, baseDir + "\\site-export-" + Guid.NewGuid().ToString());
             Console.WriteLine("Export complete. Took {0} milliseconds.", sw.ElapsedMilliseconds);
         }
 
@@ -71,9 +71,9 @@ namespace SpPrefetchIndexBuilder
             {
                 ClientContext clientContext = getClientContext(url);
                 Web oWebsite = clientContext.Web;
-                clientContext.Load(oWebsite, website => website.Webs, website => website.Title, website => website.Url, website => website.RoleDefinitions, website => website.RoleAssignments, website => website.HasUniqueRoleAssignments, website => website.Description, website => website.Id);
+                clientContext.Load(oWebsite, website => website.Webs, website => website.Title, website => website.Url, website => website.RoleDefinitions, website => website.RoleAssignments, website => website.HasUniqueRoleAssignments, website => website.Description, website => website.Id, website => website.LastItemModifiedDate);
                 clientContext.ExecuteQuery();
-                string path = parentPath + "\\" + oWebsite.Title;
+                string path = parentPath + "\\" + oWebsite.Id;
                 DownloadWeb(clientContext, oWebsite, url, path);
                 foreach (Web orWebsite in oWebsite.Webs)
                 {
@@ -97,32 +97,28 @@ namespace SpPrefetchIndexBuilder
             webDict.Add("Id", web.Id);
             webDict.Add("Description", web.Description);
             webDict.Add("Url", url);
+            webDict.Add("LastItemModifiedDate", web.LastItemModifiedDate.ToString());
             if (web.HasUniqueRoleAssignments)
             {
-                List<object[]> roleDefArray = new List<object[]>();
+                Dictionary<string, Dictionary<string, object>> roleDefsDict = new Dictionary<string, Dictionary<string, object>>();
                 foreach (RoleDefinition roleDefition in web.RoleDefinitions)
                 {
-                    roleDefArray.Add(new object[] { roleDefition.Id, roleDefition.Name, roleDefition.RoleTypeKind});
+                    Dictionary<string, object> roleDefDict = new Dictionary<string, object>();
+                    roleDefDict.Add("Id", roleDefition.Id);
+                    roleDefDict.Add("Name", roleDefition.Name);
+                    roleDefDict.Add("RoleTypeKind", roleDefition.RoleTypeKind.ToString());
+                    roleDefsDict.Add(roleDefition.Id.ToString(), roleDefDict);
                 }
-                webDict.Add("RoleDefinitions", roleDefArray);
+                webDict.Add("RoleDefinitions", roleDefsDict);
                 clientContext.Load(web.RoleAssignments,
                     roleAssignment => roleAssignment.Include(
                             item => item.PrincipalId,
                             item => item.Member.LoginName,
+                            item => item.Member.PrincipalType,
                             item => item.RoleDefinitionBindings
                         ));
                 clientContext.ExecuteQuery();
-                Dictionary<string, object> roleAssignmentDict = new Dictionary<string, object>();                
-                foreach (RoleAssignment roleAssignment in web.RoleAssignments)
-                {
-                    List<int> defs = new List<int>();
-                    foreach (RoleDefinition roleDefinition in roleAssignment.RoleDefinitionBindings)
-                    {
-                        defs.Add(roleDefinition.Id);
-                    }
-                    roleAssignmentDict.Add(roleAssignment.Member.LoginName, defs);
-                }
-                webDict.Add("RoleAssignments", roleAssignmentDict);
+                SetRoleAssignments(web.RoleAssignments, webDict);
             }
             string siteJsonPath = path + "\\web.json";
             System.IO.File.WriteAllText(siteJsonPath, serializer.Serialize(webDict));
@@ -130,12 +126,13 @@ namespace SpPrefetchIndexBuilder
 
             ListCollection lists = web.Lists;
 
-            clientContext.Load(lists);
+            clientContext.Load(lists);            
             clientContext.ExecuteQuery();
 
             Dictionary<string, object> listsDict = new Dictionary<string, object>();
             foreach (List list in lists)
             {
+                clientContext.Load(list, lslist => lslist.HasUniqueRoleAssignments, lslist => lslist.Title, lslist => lslist.BaseType, lslist => lslist.Description, lslist => lslist.LastItemModifiedDate, lslist => lslist.RootFolder);
                 // All sites have a few lists that we don't care about exporting. Exclude these.
                 if (list.Title.Equals("Composed Looks") || list.Title.Equals("Master Page Gallery") || list.Title.Equals("Site Assets") || list.Title.Equals("Site Pages"))
                 {
@@ -144,6 +141,9 @@ namespace SpPrefetchIndexBuilder
                 Dictionary <string, object> listDict = new Dictionary<string, object>();
                 listDict.Add("Id", list.Id);
                 listDict.Add("Title", list.Title);
+                listDict.Add("BaseType", list.BaseType.ToString());
+                listDict.Add("Description", list.Description);
+                listDict.Add("LastItemModifiedDate", list.LastItemModifiedDate.ToString());
                 CamlQuery camlQuery = new CamlQuery();
                 camlQuery.ViewXml = "<View Scope=\"RecursiveAll\"></View>";
                 ListItemCollection collListItem = list.GetItems(camlQuery);
@@ -163,33 +163,49 @@ namespace SpPrefetchIndexBuilder
                             roleAssignments => roleAssignments.Include(
                                     item => item.PrincipalId,
                                     item => item.Member.LoginName,
+                                    item => item.Member.PrincipalType,
                                     item => item.RoleDefinitionBindings
                             ));
                     }
                 }
                 clientContext.Load(list.RootFolder.Files);
                 clientContext.Load(list.RootFolder.Folders);
+                clientContext.Load(list.RootFolder);
+                clientContext.Load(list.RoleAssignments,
+                        roleAssignments => roleAssignments.Include(
+                                item => item.PrincipalId,
+                                item => item.Member.LoginName,
+                                item => item.Member.PrincipalType,
+                                item => item.RoleDefinitionBindings
+                        ));
                 clientContext.ExecuteQuery();
                 List<Dictionary<string, object>> itemsList = new List<Dictionary<string, object>>();
                 foreach (ListItem listItem in collListItem)
                 {
+                    clientContext.Load(listItem.Folder);
+                    clientContext.Load(listItem.File);
+                    clientContext.ExecuteQuery();
                     Dictionary<string, object> itemDict = new Dictionary<string, object>();
                     itemDict.Add("DisplayName", listItem.DisplayName);
                     itemDict.Add("Id", listItem.Id);
-                    Dictionary<string, object> roleAssignmentDict = new Dictionary<string, object>();
+                    itemDict.Add("ContentType", listItem.ContentType.ToString());
+                    if (listItem.File.ServerObjectIsNull == false)
+                    {
+                        itemDict.Add("Url", site + listItem.File.ServerRelativeUrl);
+                        itemDict.Add("TimeLastModified", listItem.File.TimeLastModified.ToString());
+                    }
+                    else if (listItem.Folder.ServerObjectIsNull == false)
+                    {
+                        itemDict.Add("Url", site + listItem.Folder.ServerRelativeUrl);
+                    }
+                    else
+                    {
+                        itemDict.Add("Url", site + list.RootFolder.ServerRelativeUrl);
+                    }
                     if (listItem.HasUniqueRoleAssignments)
                     {
-                        foreach (RoleAssignment roleAssignment in listItem.RoleAssignments)
-                        {
-                            List<object> permissions = new List<object>();
-                            foreach (RoleDefinition roleDefinition in roleAssignment.RoleDefinitionBindings)
-                            {
-                                permissions.Add(roleDefinition.Id);
-                            }
-                            roleAssignmentDict.Add(roleAssignment.Member.LoginName, permissions);
-                        }
+                        SetRoleAssignments(listItem.RoleAssignments, itemDict);
                     }
-                    itemDict.Add("RoleAssignments", roleAssignmentDict);
                     itemDict.Add("FieldValues", listItem.FieldValues);
                     if (listItem.FieldValues.ContainsKey("Attachments") && (bool)listItem.FieldValues["Attachments"])
                     {
@@ -199,7 +215,7 @@ namespace SpPrefetchIndexBuilder
                         foreach (Attachment attachmentFile in listItem.AttachmentFiles)
                         {
                             Dictionary<string, object> attachmentFileDict = new Dictionary<string, object>();
-                            attachmentFileDict.Add("ServerRelativeUrl", attachmentFile.ServerRelativeUrl);
+                            attachmentFileDict.Add("Url", site + attachmentFile.ServerRelativeUrl);
                             attachmentFileDict.Add("FileName", attachmentFile.FileName);
                             attachmentFileList.Add(attachmentFileDict);
                         }
@@ -208,11 +224,12 @@ namespace SpPrefetchIndexBuilder
                     itemsList.Add(itemDict);
                 }
                 listDict.Add("Items", itemsList);
-                clientContext.Load(list.RootFolder);
-                clientContext.Load(list.RootFolder.Files);
-                clientContext.Load(list.RootFolder.Folders);
-                clientContext.ExecuteQuery();
+                listDict.Add("Url", site + list.RootFolder.ServerRelativeUrl);
                 listDict.Add("Files", IndexFolder(clientContext, list.RootFolder));
+                if (list.HasUniqueRoleAssignments)
+                {
+                    SetRoleAssignments(list.RoleAssignments, listDict);
+                }
                 if (listsDict.ContainsKey(list.Id.ToString()))
                 {
                     Console.WriteLine("Duplicate key " + list.Id);
@@ -225,6 +242,25 @@ namespace SpPrefetchIndexBuilder
             string listJsonPath = path + "\\lists.json";
             Console.WriteLine("Exported lists for site {0} to {1}", url, listJsonPath);
             System.IO.File.WriteAllText(listJsonPath, serializer.Serialize(listsDict));
+        }
+
+        private static void SetRoleAssignments(RoleAssignmentCollection roleAssignments, Dictionary<string, object> itemDict)
+        {
+            Dictionary<string, object> roleAssignmentsDict = new Dictionary<string, object>();
+            foreach (RoleAssignment roleAssignment in roleAssignments)
+            {
+                Dictionary<string, object> roleAssignmentDict = new Dictionary<string, object>();
+                List<string> defs = new List<string>();
+                foreach (RoleDefinition roleDefinition in roleAssignment.RoleDefinitionBindings)
+                {
+                    defs.Add(roleDefinition.Id.ToString());
+                }
+                roleAssignmentDict.Add("LoginName", roleAssignment.Member.LoginName);
+                roleAssignmentDict.Add("PrincipalType", roleAssignment.Member.PrincipalType.ToString());
+                roleAssignmentDict.Add("RoleDefinitionIds", defs);
+                roleAssignmentsDict.Add(roleAssignment.Member.LoginName, roleAssignmentDict);
+            }
+            itemDict.Add("RoleAssignments", roleAssignmentsDict);
         }
 
         static public List<Dictionary<string, object>> IndexFolder(ClientContext clientContext, Folder folder)
