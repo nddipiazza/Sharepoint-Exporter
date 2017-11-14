@@ -15,6 +15,7 @@ namespace SpPrefetchIndexBuilder
         public static string site = defaultSite;
         public static JavaScriptSerializer serializer = new JavaScriptSerializer();
         public static string baseDir;
+        public static int maxFileSizeBytes = -1;
 
         static void Main(string[] args)
         {
@@ -33,6 +34,11 @@ namespace SpPrefetchIndexBuilder
             }
             if (args.Length > 2)
             {
+                String spMaxFileSizeBytes = Environment.GetEnvironmentVariable("SP_MAX_FILE_SIZE_BYTES");
+                if (spMaxFileSizeBytes != null)
+                {
+                    maxFileSizeBytes = int.Parse(spMaxFileSizeBytes);
+                }
                 cc = new CredentialCache();
                 String spPassword = Environment.GetEnvironmentVariable("SP_PWD");
                 if (spPassword == null)
@@ -132,7 +138,7 @@ namespace SpPrefetchIndexBuilder
             Dictionary<string, object> listsDict = new Dictionary<string, object>();
             foreach (List list in lists)
             {
-                clientContext.Load(list, lslist => lslist.HasUniqueRoleAssignments, lslist => lslist.Title, lslist => lslist.BaseType, lslist => lslist.Description, lslist => lslist.LastItemModifiedDate, lslist => lslist.RootFolder);
+                clientContext.Load(list, lslist => lslist.HasUniqueRoleAssignments, lslist => lslist.Title, lslist => lslist.BaseType, lslist => lslist.Description, lslist => lslist.LastItemModifiedDate, lslist => lslist.RootFolder, lslist => lslist.DefaultDisplayFormUrl);
                 // All sites have a few lists that we don't care about exporting. Exclude these.
                 if (list.Title.Equals("Composed Looks") || list.Title.Equals("Master Page Gallery") || list.Title.Equals("Site Assets") || list.Title.Equals("Site Pages"))
                 {
@@ -188,20 +194,31 @@ namespace SpPrefetchIndexBuilder
                     Dictionary<string, object> itemDict = new Dictionary<string, object>();
                     itemDict.Add("DisplayName", listItem.DisplayName);
                     itemDict.Add("Id", listItem.Id);
-                    itemDict.Add("ContentType", listItem.ContentType.ToString());
                     if (listItem.File.ServerObjectIsNull == false)
                     {
-                        itemDict.Add("Url", site + listItem.File.ServerRelativeUrl);
                         itemDict.Add("TimeLastModified", listItem.File.TimeLastModified.ToString());
+                        itemDict.Add("ListItemType", "List_Item");
+                        if (maxFileSizeBytes < 0 || (int)itemDict["File_x0020_Size"] < maxFileSizeBytes)
+                        {
+                            string filePath = path + "\\" + list.Id + "_" + listItem.Id + System.IO.Path.GetExtension(listItem.File.Name);
+                            var fileInfo = File.OpenBinaryDirect(clientContext, listItem.File.ServerRelativeUrl);
+                            using (var fileStream = System.IO.File.Create(filePath))
+                            {
+                                fileInfo.Stream.CopyTo(fileStream);
+                            }
+                            itemDict.Add("FileExportPath", filePath);
+                        }
+                        
                     }
                     else if (listItem.Folder.ServerObjectIsNull == false)
                     {
-                        itemDict.Add("Url", site + listItem.Folder.ServerRelativeUrl);
+                        itemDict.Add("ListItemType", "Folder");
                     }
                     else
                     {
-                        itemDict.Add("Url", site + list.RootFolder.ServerRelativeUrl);
+                        itemDict.Add("ListItemType", "List_Item");
                     }
+                    itemDict.Add("Url", site + list.DefaultDisplayFormUrl + string.Format("?ID={0}", listItem.Id));
                     if (listItem.HasUniqueRoleAssignments)
                     {
                         SetRoleAssignments(listItem.RoleAssignments, itemDict);
@@ -216,6 +233,13 @@ namespace SpPrefetchIndexBuilder
                         {
                             Dictionary<string, object> attachmentFileDict = new Dictionary<string, object>();
                             attachmentFileDict.Add("Url", site + attachmentFile.ServerRelativeUrl);
+                            string filePath = path + "\\" + list.Id + "_" + listItem.Id + "_att" + System.IO.Path.GetExtension(attachmentFile.FileName);
+                            var fileInfo = File.OpenBinaryDirect(clientContext, attachmentFile.ServerRelativeUrl);
+                            using (var fileStream = System.IO.File.Create(filePath))
+                            {
+                                fileInfo.Stream.CopyTo(fileStream);
+                            }
+                            attachmentFileDict.Add("ExportPath", filePath);
                             attachmentFileDict.Add("FileName", attachmentFile.FileName);
                             attachmentFileList.Add(attachmentFileDict);
                         }
@@ -225,7 +249,7 @@ namespace SpPrefetchIndexBuilder
                 }
                 listDict.Add("Items", itemsList);
                 listDict.Add("Url", site + list.RootFolder.ServerRelativeUrl);
-                listDict.Add("Files", IndexFolder(clientContext, list.RootFolder));
+                //listDict.Add("Files", IndexFolder(clientContext, list.RootFolder));
                 if (list.HasUniqueRoleAssignments)
                 {
                     SetRoleAssignments(list.RoleAssignments, listDict);
