@@ -39,7 +39,7 @@ namespace SpPrefetchIndexBuilder
         public JavaScriptSerializer serializer = new JavaScriptSerializer();
         public string baseDir;
         public int maxFileSizeBytes = -1;
-        public static int numThreads = 100;
+        public static int numThreads = 50;
 
         public BlockingCollection<ListToFetch> listFetchBlockingCollection = new BlockingCollection<ListToFetch>();
         public BlockingCollection<FileToDownload> fileDownloadBlockingCollection = new BlockingCollection<FileToDownload>();
@@ -49,6 +49,7 @@ namespace SpPrefetchIndexBuilder
 
         public void DownloadFilesFromQueue()
         {
+            Console.WriteLine("Starting Thread {0}", Thread.CurrentThread.ManagedThreadId);
             FileToDownload toDownload;
             while (fileDownloadBlockingCollection.TryTake(out toDownload))
             {
@@ -64,6 +65,7 @@ namespace SpPrefetchIndexBuilder
 
         public void FetchList()
         {
+            Console.WriteLine("Starting Thread {0}", Thread.CurrentThread.ManagedThreadId);
             ListToFetch listToFetch;
             while (listFetchBlockingCollection.TryTake(out listToFetch))
             {
@@ -237,6 +239,11 @@ namespace SpPrefetchIndexBuilder
             if (spMaxFileSizeBytes != null)
             {
                 maxFileSizeBytes = int.Parse(spMaxFileSizeBytes);
+            }
+            String spNumThreads = Environment.GetEnvironmentVariable("SP_NUM_THREADS");
+            if (spNumThreads != null)
+            {
+                numThreads = int.Parse(spNumThreads);
             }
             serializer.MaxJsonLength = 209715200;
             if (args.Length >= 2 && (args[0].Equals("--help") || args[0].Equals("-help") || args[0].Equals("/help") || args.Length > 5 || args.Length == 3))
