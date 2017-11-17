@@ -11,13 +11,6 @@ using System.Threading;
 
 namespace SpPrefetchIndexBuilder
 {
-    class FileToDownload
-    {
-        public String site;
-        public String serverRelativeUrl;
-        public String saveToPath;
-    }
-
     class ListToFetch
     {
         public String site;
@@ -50,24 +43,7 @@ namespace SpPrefetchIndexBuilder
         public void DownloadFilesFromQueue()
         {
             Console.WriteLine("Starting Thread {0}", Thread.CurrentThread.ManagedThreadId);
-            FileToDownload toDownload;
-            while (fileDownloadBlockingCollection.TryTake(out toDownload))
-            {
-                try
-                {
-                    ClientContext clientContext = getClientContext(toDownload.site);
-                    var fileInfo = File.OpenBinaryDirect(clientContext, toDownload.serverRelativeUrl);
-                    using (var fileStream = System.IO.File.Create(toDownload.saveToPath))
-                    {
-                        Console.WriteLine("Thread {0} - Saving {1} to {2}", Thread.CurrentThread.ManagedThreadId, toDownload.serverRelativeUrl, toDownload.saveToPath);
-                        fileInfo.Stream.CopyTo(fileStream);
-                    }
-                } catch (Exception e)
-                {
-                    Console.WriteLine("Got error trying to download file {0}: {1}", toDownload.saveToPath, e.Message);
-                    Console.WriteLine(e.StackTrace);
-                }
-            }
+            FileDownloader.DownloadFiles(fileDownloadBlockingCollection, 240000, cc);
         }
 
         public void FetchList()
@@ -503,8 +479,6 @@ namespace SpPrefetchIndexBuilder
                 fileDict.Add("Name", file.Name);
                 fileDict.Add("TimeCreated", file.TimeCreated);
                 fileDict.Add("TimeLastModified", file.TimeLastModified);
-                // TODO: how do i get the author info to return? it gives me error when I try to get it.
-                // fileDict.Add("Author.LoginName", file.Author.LoginName);
                 fileDict.Add("ServerRelativeUrl", file.ServerRelativeUrl);
                 files.Add(fileDict);
             }
