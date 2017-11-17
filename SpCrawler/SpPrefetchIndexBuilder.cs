@@ -53,12 +53,19 @@ namespace SpPrefetchIndexBuilder
             FileToDownload toDownload;
             while (fileDownloadBlockingCollection.TryTake(out toDownload))
             {
-                ClientContext clientContext = getClientContext(toDownload.site);
-                var fileInfo = File.OpenBinaryDirect(clientContext, toDownload.serverRelativeUrl);
-                using (var fileStream = System.IO.File.Create(toDownload.saveToPath))
+                try
                 {
-                    Console.WriteLine("Thread {0} - Saving {1} to {2}", Thread.CurrentThread.ManagedThreadId, toDownload.serverRelativeUrl, toDownload.saveToPath);
-                    fileInfo.Stream.CopyTo(fileStream);
+                    ClientContext clientContext = getClientContext(toDownload.site);
+                    var fileInfo = File.OpenBinaryDirect(clientContext, toDownload.serverRelativeUrl);
+                    using (var fileStream = System.IO.File.Create(toDownload.saveToPath))
+                    {
+                        Console.WriteLine("Thread {0} - Saving {1} to {2}", Thread.CurrentThread.ManagedThreadId, toDownload.serverRelativeUrl, toDownload.saveToPath);
+                        fileInfo.Stream.CopyTo(fileStream);
+                    }
+                } catch (Exception e)
+                {
+                    Console.WriteLine("Got error trying to download file {0}: {1}", toDownload.saveToPath, e.Message);
+                    Console.WriteLine(e.StackTrace);
                 }
             }
         }
@@ -69,6 +76,8 @@ namespace SpPrefetchIndexBuilder
             ListToFetch listToFetch;
             while (listFetchBlockingCollection.TryTake(out listToFetch))
             {
+                try
+                {
                 ClientContext clientContext = getClientContext(listToFetch.site);
                 List list = clientContext.Web.Lists.GetById(listToFetch.listId);
                 clientContext.Load(list, lslist => lslist.HasUniqueRoleAssignments, lslist => lslist.Id, lslist => lslist.Title, lslist => lslist.BaseType,
@@ -80,14 +89,14 @@ namespace SpPrefetchIndexBuilder
                 ListItemCollection collListItem = list.GetItems(camlQuery);
                 clientContext.Load(collListItem);
                 clientContext.Load(collListItem,
-                  items => items.Include(
-                     item => item.Id,
-                     item => item.DisplayName,
-                     item => item.HasUniqueRoleAssignments,
-                     item => item.Folder,
-                     item => item.File
-                     //,item => item.ContentType
-                     ));
+                    items => items.Include(
+                        item => item.Id,
+                        item => item.DisplayName,
+                        item => item.HasUniqueRoleAssignments,
+                        item => item.Folder,
+                        item => item.File
+                        //,item => item.ContentType
+                        ));
                 clientContext.Load(list.RootFolder.Files);
                 clientContext.Load(list.RootFolder.Folders);
                 clientContext.Load(list.RootFolder);
@@ -118,7 +127,7 @@ namespace SpPrefetchIndexBuilder
                         itemDict.Add("ListItemType", "List_Item");
                         if (maxFileSizeBytes < 0 || listItem.FieldValues.ContainsKey("File_x0020_Size") == false || int.Parse((string)listItem.FieldValues["File_x0020_Size"]) < maxFileSizeBytes)
                         {
-                            string filePath = baseDir + "\\files\\" + Guid.NewGuid().ToString() + System.IO.Path.GetExtension(listItem.File.Name);
+                            string filePath = baseDir + System.IO.Path.PathSeparator + "files" + System.IO.Path.PathSeparator + Guid.NewGuid().ToString() + System.IO.Path.GetExtension(listItem.File.Name);
                             FileToDownload toDownload = new FileToDownload();
                             toDownload.saveToPath = filePath;
                             toDownload.serverRelativeUrl = listItem.File.ServerRelativeUrl;
@@ -157,7 +166,7 @@ namespace SpPrefetchIndexBuilder
                         {
                             Dictionary<string, object> attachmentFileDict = new Dictionary<string, object>();
                             attachmentFileDict.Add("Url", site + attachmentFile.ServerRelativeUrl);
-                            string filePath = baseDir + "\\files\\" + Guid.NewGuid().ToString() + System.IO.Path.GetExtension(attachmentFile.FileName);
+                            string filePath = baseDir + System.IO.Path.PathSeparator + "files" + System.IO.Path.PathSeparator + Guid.NewGuid().ToString() + System.IO.Path.GetExtension(attachmentFile.FileName);
                             FileToDownload toDownload = new FileToDownload();
                             toDownload.saveToPath = filePath;
                             toDownload.serverRelativeUrl = attachmentFile.ServerRelativeUrl;
@@ -193,6 +202,12 @@ namespace SpPrefetchIndexBuilder
                 else
                 {
                     listToFetch.listsDict.Add(list.Id.ToString(), listDict);
+                }
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine("Got error trying to fetch list {0}: {1}", listToFetch.listId, e.Message);
+                    Console.WriteLine(e.StackTrace);
                 }
             }
         }
@@ -252,9 +267,9 @@ namespace SpPrefetchIndexBuilder
             }
             site = args.Length > 0 ? args[0] : defaultSite;
             baseDir = args.Length > 1 ? args[1] : System.IO.Directory.GetCurrentDirectory();
-            baseDir = baseDir + "\\" + Guid.NewGuid().ToString().Substring(0, 8);
-            System.IO.Directory.CreateDirectory(baseDir + "\\lists");
-            System.IO.Directory.CreateDirectory(baseDir + "\\files");
+            baseDir = baseDir + System.IO.Path.PathSeparator + Guid.NewGuid().ToString().Substring(0, 8);
+            System.IO.Directory.CreateDirectory(baseDir + System.IO.Path.PathSeparator + "lists");
+            System.IO.Directory.CreateDirectory(baseDir + System.IO.Path.PathSeparator + "files");
             if (site.EndsWith("/"))
             {
                 site = site.Substring(0, site.Length - 1);
@@ -296,7 +311,7 @@ namespace SpPrefetchIndexBuilder
                 Console.WriteLine("Export complete. Took {0} milliseconds.", sw.ElapsedMilliseconds);
             } catch (Exception anyException)
             {
-                Console.WriteLine("Prefetch index building failed for {0}", args);
+                Console.WriteLine("Prefetch index building failed for {0}: {1}", args, anyException.Message);
                 Console.WriteLine(anyException.StackTrace);
             }
         }
@@ -348,7 +363,7 @@ namespace SpPrefetchIndexBuilder
             }
             else
             {
-                string webJsonPath = baseDir + "\\web.json";
+                string webJsonPath = baseDir + System.IO.Path.PathSeparator + "web.json";
                 System.IO.File.WriteAllText(webJsonPath, serializer.Serialize(webDict));
                 Console.WriteLine("Exported site properties for site {0} to {1}", url, webJsonPath);
             }
@@ -357,7 +372,7 @@ namespace SpPrefetchIndexBuilder
         Dictionary<string, object> DownloadWeb(ClientContext clientContext, Web web, string url)
         {
             Console.WriteLine("Exporting site {0}", url);
-            string listsJsonPath = baseDir + "\\lists\\" + Guid.NewGuid().ToString() + ".json";
+            string listsJsonPath = baseDir + System.IO.Path.PathSeparator + "lists" + System.IO.Path.PathSeparator + Guid.NewGuid().ToString() + ".json";
             Dictionary<string, object> webDict = new Dictionary<string, object>();
             webDict.Add("Title", web.Title);
             webDict.Add("Id", web.Id);
@@ -389,10 +404,53 @@ namespace SpPrefetchIndexBuilder
             }
 
             ListCollection lists = web.Lists;
-
-            clientContext.Load(lists);            
+            GroupCollection groups = web.SiteGroups;
+            UserCollection users = web.SiteUsers;
+            clientContext.Load(lists);
+            clientContext.Load(groups,
+                grp => grp.Include(
+                    item => item.Users,
+                    item => item.Id,
+                    item => item.LoginName,
+                    item => item.PrincipalType,
+                    item => item.Title
+                ));
+            clientContext.Load(users);
             clientContext.ExecuteQuery();
 
+            Dictionary<string, object> usersAndGroupsDict = new Dictionary<string, object>();
+            foreach (Group group in groups)
+            {
+                Dictionary<string, object> groupDict = new Dictionary<string, object>();
+                groupDict.Add("Id", "" + group.Id);
+                groupDict.Add("LoginName", group.LoginName);
+                groupDict.Add("PrincipalType", group.PrincipalType.ToString());
+                groupDict.Add("Title", group.Title);
+                Dictionary<string, object> innerUsersDict = new Dictionary<string, object>();
+                foreach (User user in group.Users)
+                {
+                    Dictionary<string, object> innerUserDict = new Dictionary<string, object>();
+                    innerUserDict.Add("LoginName", user.LoginName);
+                    innerUserDict.Add("Id", "" + user.Id);
+                    innerUserDict.Add("PrincipalType", user.PrincipalType.ToString());
+                    innerUserDict.Add("IsSiteAdmin", "" + user.IsSiteAdmin);
+                    innerUserDict.Add("Title", user.Title);
+                    innerUsersDict.Add(user.LoginName, innerUserDict);
+                }
+                groupDict.Add("Users", innerUsersDict);
+                usersAndGroupsDict.Add(group.LoginName, groupDict);
+            }
+            foreach (User user in users)
+            {
+                Dictionary<string, object> userDict = new Dictionary<string, object>();
+                userDict.Add("LoginName", user.LoginName);
+                userDict.Add("Id", "" + user.Id);
+                userDict.Add("PrincipalType", user.PrincipalType.ToString());
+                userDict.Add("IsSiteAdmin", "" + user.IsSiteAdmin);
+                userDict.Add("Title", user.Title);
+                usersAndGroupsDict.Add(user.LoginName, userDict);
+            }
+            webDict.Add("UsersAndGroups", usersAndGroupsDict);
             Dictionary<string, object> listsDict = new Dictionary<string, object>();
             foreach (List list in lists)
             {
