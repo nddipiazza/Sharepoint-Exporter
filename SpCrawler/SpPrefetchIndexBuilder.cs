@@ -127,7 +127,7 @@ namespace SpPrefetchIndexBuilder
                         itemDict.Add("ListItemType", "List_Item");
                         if (maxFileSizeBytes < 0 || listItem.FieldValues.ContainsKey("File_x0020_Size") == false || int.Parse((string)listItem.FieldValues["File_x0020_Size"]) < maxFileSizeBytes)
                         {
-                            string filePath = baseDir + System.IO.Path.PathSeparator + "files" + System.IO.Path.PathSeparator + Guid.NewGuid().ToString() + System.IO.Path.GetExtension(listItem.File.Name);
+                            string filePath = baseDir + System.IO.Path.DirectorySeparatorChar  + "files" + System.IO.Path.DirectorySeparatorChar  + Guid.NewGuid().ToString() + System.IO.Path.GetExtension(listItem.File.Name);
                             FileToDownload toDownload = new FileToDownload();
                             toDownload.saveToPath = filePath;
                             toDownload.serverRelativeUrl = listItem.File.ServerRelativeUrl;
@@ -166,7 +166,7 @@ namespace SpPrefetchIndexBuilder
                         {
                             Dictionary<string, object> attachmentFileDict = new Dictionary<string, object>();
                             attachmentFileDict.Add("Url", site + attachmentFile.ServerRelativeUrl);
-                            string filePath = baseDir + System.IO.Path.PathSeparator + "files" + System.IO.Path.PathSeparator + Guid.NewGuid().ToString() + System.IO.Path.GetExtension(attachmentFile.FileName);
+                            string filePath = baseDir + System.IO.Path.DirectorySeparatorChar  + "files" + System.IO.Path.DirectorySeparatorChar  + Guid.NewGuid().ToString() + System.IO.Path.GetExtension(attachmentFile.FileName);
                             FileToDownload toDownload = new FileToDownload();
                             toDownload.saveToPath = filePath;
                             toDownload.serverRelativeUrl = attachmentFile.ServerRelativeUrl;
@@ -267,9 +267,9 @@ namespace SpPrefetchIndexBuilder
             }
             site = args.Length > 0 ? args[0] : defaultSite;
             baseDir = args.Length > 1 ? args[1] : System.IO.Directory.GetCurrentDirectory();
-            baseDir = baseDir + System.IO.Path.PathSeparator + Guid.NewGuid().ToString().Substring(0, 8);
-            System.IO.Directory.CreateDirectory(baseDir + System.IO.Path.PathSeparator + "lists");
-            System.IO.Directory.CreateDirectory(baseDir + System.IO.Path.PathSeparator + "files");
+            baseDir = baseDir + System.IO.Path.DirectorySeparatorChar  + Guid.NewGuid().ToString().Substring(0, 8);
+            System.IO.Directory.CreateDirectory(baseDir + System.IO.Path.DirectorySeparatorChar  + "lists");
+            System.IO.Directory.CreateDirectory(baseDir + System.IO.Path.DirectorySeparatorChar  + "files");
             if (site.EndsWith("/"))
             {
                 site = site.Substring(0, site.Length - 1);
@@ -363,7 +363,7 @@ namespace SpPrefetchIndexBuilder
             }
             else
             {
-                string webJsonPath = baseDir + System.IO.Path.PathSeparator + "web.json";
+                string webJsonPath = baseDir + System.IO.Path.DirectorySeparatorChar  + "web.json";
                 System.IO.File.WriteAllText(webJsonPath, serializer.Serialize(webDict));
                 Console.WriteLine("Exported site properties for site {0} to {1}", url, webJsonPath);
             }
@@ -372,7 +372,7 @@ namespace SpPrefetchIndexBuilder
         Dictionary<string, object> DownloadWeb(ClientContext clientContext, Web web, string url)
         {
             Console.WriteLine("Exporting site {0}", url);
-            string listsJsonPath = baseDir + System.IO.Path.PathSeparator + "lists" + System.IO.Path.PathSeparator + Guid.NewGuid().ToString() + ".json";
+            string listsJsonPath = baseDir + System.IO.Path.DirectorySeparatorChar  + "lists" + System.IO.Path.DirectorySeparatorChar  + Guid.NewGuid().ToString() + ".json";
             Dictionary<string, object> webDict = new Dictionary<string, object>();
             webDict.Add("Title", web.Title);
             webDict.Add("Id", web.Id);
