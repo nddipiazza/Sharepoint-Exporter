@@ -127,6 +127,7 @@ namespace SpPrefetchIndexBuilder
                             ras => ras.Include(
                                     item => item.PrincipalId,
                                     item => item.Member.LoginName,
+                                    item => item.Member.Title,
                                     item => item.Member.PrincipalType,
                                     item => item.RoleDefinitionBindings));
                         clientContext.ExecuteQuery();
@@ -165,6 +166,7 @@ namespace SpPrefetchIndexBuilder
                     roleAssignments => roleAssignments.Include(
                             item => item.PrincipalId,
                             item => item.Member.LoginName,
+                            item => item.Member.Title,
                             item => item.Member.PrincipalType,
                             item => item.RoleDefinitionBindings
                     ));
@@ -287,7 +289,7 @@ namespace SpPrefetchIndexBuilder
                 Console.WriteLine("Export complete. Took {0} milliseconds.", sw.ElapsedMilliseconds);
             } catch (Exception anyException)
             {
-                Console.WriteLine("Prefetch index building failed for {0}: {1}", args, anyException.Message);
+                Console.WriteLine("Prefetch index building failed for {0}: {1}", string.Join(" ", args), anyException.Message);
                 Console.WriteLine(anyException.StackTrace);
             }
         }
@@ -372,6 +374,7 @@ namespace SpPrefetchIndexBuilder
                     roleAssignment => roleAssignment.Include(
                             item => item.PrincipalId,
                             item => item.Member.LoginName,
+                            item => item.Member.Title,
                             item => item.Member.PrincipalType,
                             item => item.RoleDefinitionBindings
                         ));
@@ -461,6 +464,7 @@ namespace SpPrefetchIndexBuilder
                     defs.Add(roleDefinition.Id.ToString());
                 }
                 roleAssignmentDict.Add("LoginName", roleAssignment.Member.LoginName);
+                roleAssignmentDict.Add("Title", roleAssignment.Member.Title);
                 roleAssignmentDict.Add("PrincipalType", roleAssignment.Member.PrincipalType.ToString());
                 roleAssignmentDict.Add("RoleDefinitionIds", defs);
                 roleAssignmentsDict.Add(roleAssignment.Member.LoginName, roleAssignmentDict);

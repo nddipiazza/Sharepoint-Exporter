@@ -22,32 +22,40 @@ namespace SpPrefetchIndexBuilder
 
         public void StartDownloads(int timeout)
         {
-            Console.WriteLine("Starting Thread {0}", Thread.CurrentThread.ManagedThreadId);
-            FileToDownload toDownload;
-			HttpClientHandler handler = new HttpClientHandler();
-			handler.Credentials = cc;
-			HttpClient client = new HttpClient(handler);
-            while (fileDownloadBlockingCollection.TryTake(out toDownload))
+            try 
             {
-                Console.WriteLine("Thread {0} - Starting download of {1} to {2}", Thread.CurrentThread.ManagedThreadId, toDownload.serverRelativeUrl, toDownload.saveToPath);
-				try
-                {
-                    var responseResult = client.GetAsync(toDownload.site + toDownload.serverRelativeUrl);
-					using (var memStream = responseResult.Result.Content.ReadAsStreamAsync().Result)
-					{
-						using (var fileStream = File.Create(toDownload.saveToPath))
-						{
-							memStream.CopyTo(fileStream);
-						}
-
-					}
-                }
-				catch (Exception e)
+				Console.WriteLine("Starting Thread {0}", Thread.CurrentThread.ManagedThreadId);
+				FileToDownload toDownload;
+				HttpClientHandler handler = new HttpClientHandler();
+				handler.Credentials = cc;
+				HttpClient client = new HttpClient(handler);
+				while (fileDownloadBlockingCollection.TryTake(out toDownload))
 				{
-					Console.WriteLine("Got error trying to download file {0}: {1}", toDownload.saveToPath, e.Message);
-					Console.WriteLine(e.StackTrace);
-				}
-                Console.WriteLine("Thread {0} - Finished attempt to download {1} to {2} - Success? {3}", Thread.CurrentThread.ManagedThreadId, toDownload.serverRelativeUrl, toDownload.saveToPath);
+					Console.WriteLine("Thread {0} - Starting download of {1} to {2}", Thread.CurrentThread.ManagedThreadId, toDownload.serverRelativeUrl, toDownload.saveToPath);
+					try
+					{
+						var responseResult = client.GetAsync(toDownload.site + toDownload.serverRelativeUrl);
+						using (var memStream = responseResult.Result.Content.ReadAsStreamAsync().Result)
+						{
+							using (var fileStream = File.Create(toDownload.saveToPath))
+							{
+								memStream.CopyTo(fileStream);
+							}
+
+						}
+					}
+					catch (Exception e)
+					{
+						Console.WriteLine("Got error trying to download file {0}: {1}", toDownload.saveToPath, e.Message);
+						Console.WriteLine(e.StackTrace);
+					}
+                    Console.WriteLine("Thread {0} - Finished attempt to download {1} to {2}", Thread.CurrentThread.ManagedThreadId, toDownload.serverRelativeUrl, toDownload.saveToPath);
+				}   
+            }
+            catch (Exception e2) 
+            {
+                Console.WriteLine("Thread {0} File Downloader failed - {1}", Thread.CurrentThread.ManagedThreadId, e2);
+				Console.WriteLine(e2.StackTrace);
             }
         }
 
