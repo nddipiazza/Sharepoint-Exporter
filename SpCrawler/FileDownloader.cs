@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
-using System.ComponentModel;
 using System.IO;
-using System.Net;
 using System.Net.Http;
 using System.Threading;
 
@@ -11,12 +9,12 @@ namespace SpPrefetchIndexBuilder
     class FileDownloader
     {
         private BlockingCollection<FileToDownload> fileDownloadBlockingCollection;
-        private System.Net.CredentialCache cc;
+        private HttpClient client;
         private System.Collections.Generic.Dictionary<int, HttpClient> webClients = new System.Collections.Generic.Dictionary<int, HttpClient>();
 
-        public FileDownloader(BlockingCollection<FileToDownload> fileDownloadBlockingCollection, System.Net.CredentialCache cc)
+        public FileDownloader(BlockingCollection<FileToDownload> fileDownloadBlockingCollection, HttpClient client)
         {
-            this.cc = cc;
+            this.client = client;
             this.fileDownloadBlockingCollection = fileDownloadBlockingCollection;
         }
 
@@ -26,12 +24,8 @@ namespace SpPrefetchIndexBuilder
             {
 				Console.WriteLine("Starting Thread {0}", Thread.CurrentThread.ManagedThreadId);
 				FileToDownload toDownload;
-				HttpClientHandler handler = new HttpClientHandler();
-				handler.Credentials = cc;
-				HttpClient client = new HttpClient(handler);
 				while (fileDownloadBlockingCollection.TryTake(out toDownload))
 				{
-					Console.WriteLine("Thread {0} - Starting download of {1} to {2}", Thread.CurrentThread.ManagedThreadId, toDownload.serverRelativeUrl, toDownload.saveToPath);
 					try
 					{
 						var responseResult = client.GetAsync(toDownload.site + toDownload.serverRelativeUrl);
@@ -46,11 +40,11 @@ namespace SpPrefetchIndexBuilder
 					}
 					catch (Exception e)
 					{
-						Console.WriteLine("Got error trying to download file {0}: {1}", toDownload.saveToPath, e.Message);
+                        Console.WriteLine("Got error trying to download url {0} to file {1}: {2}", toDownload.site + toDownload.serverRelativeUrl, toDownload.saveToPath, e.Message);
 						Console.WriteLine(e.StackTrace);
 					}
-                    Console.WriteLine("Thread {0} - Finished attempt to download {1} to {2}", Thread.CurrentThread.ManagedThreadId, toDownload.serverRelativeUrl, toDownload.saveToPath);
-				}   
+					Console.WriteLine("Thread {0} - Finished attempt to download {1} to {2}", Thread.CurrentThread.ManagedThreadId, toDownload.serverRelativeUrl, toDownload.saveToPath);    
+                }
             }
             catch (Exception e2) 
             {
@@ -59,9 +53,9 @@ namespace SpPrefetchIndexBuilder
             }
         }
 
-        public static void DownloadFiles(BlockingCollection<FileToDownload> fileDownloadBlockingCollection, int timeoutInMilliSec, System.Net.CredentialCache cc)
+        public static void DownloadFiles(BlockingCollection<FileToDownload> fileDownloadBlockingCollection, int timeoutInMilliSec, HttpClient client)
         {
-            new FileDownloader(fileDownloadBlockingCollection, cc).StartDownloads(timeoutInMilliSec);
+            new FileDownloader(fileDownloadBlockingCollection, client).StartDownloads(timeoutInMilliSec);
         }
     }
 }

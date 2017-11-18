@@ -8,6 +8,7 @@ using Microsoft.SharePoint.Client;
 using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using System.Threading;
+using System.Net.Http;
 
 namespace SpPrefetchIndexBuilder
 {
@@ -26,6 +27,7 @@ namespace SpPrefetchIndexBuilder
 
     class SpPrefetchIndexBuilder
     {
+        public static HttpClient client;
         public string defaultSite = "http://localhost/";
         public CredentialCache cc = null;
         public string site;
@@ -43,7 +45,7 @@ namespace SpPrefetchIndexBuilder
         public void DownloadFilesFromQueue()
         {
             Console.WriteLine("Starting Thread {0}", Thread.CurrentThread.ManagedThreadId);
-            FileDownloader.DownloadFiles(fileDownloadBlockingCollection, 240000, cc);
+            FileDownloader.DownloadFiles(fileDownloadBlockingCollection, 240000, client);
         }
 
         public void FetchList()
@@ -54,133 +56,133 @@ namespace SpPrefetchIndexBuilder
             {
                 try
                 {
-                ClientContext clientContext = getClientContext(listToFetch.site);
-                List list = clientContext.Web.Lists.GetById(listToFetch.listId);
-                clientContext.Load(list, lslist => lslist.HasUniqueRoleAssignments, lslist => lslist.Id, lslist => lslist.Title, lslist => lslist.BaseType,
-                    lslist => lslist.Description, lslist => lslist.LastItemModifiedDate, lslist => lslist.RootFolder, lslist => lslist.DefaultDisplayFormUrl);
-                clientContext.ExecuteQuery();
-                Console.WriteLine("Thread {0} - Parsing list site={1}, listID={2}, listTitle={3}", Thread.CurrentThread.ManagedThreadId, listToFetch.site, list.Id, list.Title);
-                CamlQuery camlQuery = new CamlQuery();
-                camlQuery.ViewXml = "<View Scope=\"RecursiveAll\"></View>";
-                ListItemCollection collListItem = list.GetItems(camlQuery);
-                clientContext.Load(collListItem);
-                clientContext.Load(collListItem,
-                    items => items.Include(
-                        item => item.Id,
-                        item => item.DisplayName,
-                        item => item.HasUniqueRoleAssignments,
-                        item => item.Folder,
-                        item => item.File
-                        //,item => item.ContentType
-                        ));
-                clientContext.Load(list.RootFolder.Files);
-                clientContext.Load(list.RootFolder.Folders);
-                clientContext.Load(list.RootFolder);
-                try
-                {
+                    ClientContext clientContext = getClientContext(listToFetch.site);
+                    List list = clientContext.Web.Lists.GetById(listToFetch.listId);
+                    clientContext.Load(list, lslist => lslist.HasUniqueRoleAssignments, lslist => lslist.Id, lslist => lslist.Title, lslist => lslist.BaseType,
+                        lslist => lslist.Description, lslist => lslist.LastItemModifiedDate, lslist => lslist.RootFolder, lslist => lslist.DefaultDisplayFormUrl);
                     clientContext.ExecuteQuery();
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine("Could not fetch listID=" + list.Id + ", listTitle=" + list.Title + " because of error " + e.Message);
-                    return;
-                }
-                Dictionary<string, object> listDict = new Dictionary<string, object>();
-                listDict.Add("Id", list.Id);
-                listDict.Add("Title", list.Title);
-                listDict.Add("BaseType", list.BaseType.ToString());
-                listDict.Add("Description", list.Description);
-                listDict.Add("LastItemModifiedDate", list.LastItemModifiedDate.ToString());
-                List<Dictionary<string, object>> itemsList = new List<Dictionary<string, object>>();
-                foreach (ListItem listItem in collListItem)
-                {
-                    Dictionary<string, object> itemDict = new Dictionary<string, object>();
-                    itemDict.Add("DisplayName", listItem.DisplayName);
-                    itemDict.Add("Id", listItem.Id);
-                    if (listItem.File.ServerObjectIsNull == false)
+                    Console.WriteLine("Thread {0} - Parsing list site={1}, listID={2}, listTitle={3}", Thread.CurrentThread.ManagedThreadId, listToFetch.site, list.Id, list.Title);
+                    CamlQuery camlQuery = new CamlQuery();
+                    camlQuery.ViewXml = "<View Scope=\"RecursiveAll\"></View>";
+                    ListItemCollection collListItem = list.GetItems(camlQuery);
+                    clientContext.Load(collListItem);
+                    clientContext.Load(collListItem,
+                        items => items.Include(
+                            item => item.Id,
+                            item => item.DisplayName,
+                            item => item.HasUniqueRoleAssignments,
+                            item => item.Folder,
+                            item => item.File
+                            //,item => item.ContentType
+                            ));
+                    clientContext.Load(list.RootFolder.Files);
+                    clientContext.Load(list.RootFolder.Folders);
+                    clientContext.Load(list.RootFolder);
+                    try
                     {
-                        itemDict.Add("TimeLastModified", listItem.File.TimeLastModified.ToString());
-                        itemDict.Add("ListItemType", "List_Item");
-                        if (maxFileSizeBytes < 0 || listItem.FieldValues.ContainsKey("File_x0020_Size") == false || int.Parse((string)listItem.FieldValues["File_x0020_Size"]) < maxFileSizeBytes)
-                        {
-                            string filePath = baseDir + System.IO.Path.DirectorySeparatorChar  + "files" + System.IO.Path.DirectorySeparatorChar  + Guid.NewGuid().ToString() + System.IO.Path.GetExtension(listItem.File.Name);
-                            FileToDownload toDownload = new FileToDownload();
-                            toDownload.saveToPath = filePath;
-                            toDownload.serverRelativeUrl = listItem.File.ServerRelativeUrl;
-                            toDownload.site = site;
-                            fileDownloadBlockingCollection.Add(toDownload);
-                            itemDict.Add("ExportPath", filePath);
-                        }
+                        clientContext.ExecuteQuery();
                     }
-                    else if (listItem.Folder.ServerObjectIsNull == false)
+                    catch (Exception e)
                     {
-                        itemDict.Add("ListItemType", "Folder");
+                        Console.WriteLine("Could not fetch listID=" + list.Id + ", listTitle=" + list.Title + " because of error " + e.Message);
+                        return;
+                    }
+                    Dictionary<string, object> listDict = new Dictionary<string, object>();
+                    listDict.Add("Id", list.Id);
+                    listDict.Add("Title", list.Title);
+                    listDict.Add("BaseType", list.BaseType.ToString());
+                    listDict.Add("Description", list.Description);
+                    listDict.Add("LastItemModifiedDate", list.LastItemModifiedDate.ToString());
+                    List<Dictionary<string, object>> itemsList = new List<Dictionary<string, object>>();
+                    foreach (ListItem listItem in collListItem)
+                    {
+                        Dictionary<string, object> itemDict = new Dictionary<string, object>();
+                        itemDict.Add("DisplayName", listItem.DisplayName);
+                        itemDict.Add("Id", listItem.Id);
+                        if (listItem.File.ServerObjectIsNull == false)
+                        {
+                            itemDict.Add("TimeLastModified", listItem.File.TimeLastModified.ToString());
+                            itemDict.Add("ListItemType", "List_Item");
+                            if (maxFileSizeBytes < 0 || listItem.FieldValues.ContainsKey("File_x0020_Size") == false || int.Parse((string)listItem.FieldValues["File_x0020_Size"]) < maxFileSizeBytes)
+                            {
+                                string filePath = baseDir + System.IO.Path.DirectorySeparatorChar  + "files" + System.IO.Path.DirectorySeparatorChar  + Guid.NewGuid().ToString() + System.IO.Path.GetExtension(listItem.File.Name);
+                                FileToDownload toDownload = new FileToDownload();
+                                toDownload.saveToPath = filePath;
+                                toDownload.serverRelativeUrl = listItem.File.ServerRelativeUrl;
+                                toDownload.site = site;
+                                fileDownloadBlockingCollection.Add(toDownload);
+                                itemDict.Add("ExportPath", filePath);
+                            }
+                        }
+                        else if (listItem.Folder.ServerObjectIsNull == false)
+                        {
+                            itemDict.Add("ListItemType", "Folder");
+                        }
+                        else
+                        {
+                            itemDict.Add("ListItemType", "List_Item");
+                        }
+                        itemDict.Add("Url", site + list.DefaultDisplayFormUrl + string.Format("?ID={0}", listItem.Id));
+                        if (listItem.HasUniqueRoleAssignments)
+                        {
+                            clientContext.Load(listItem.RoleAssignments,
+                                ras => ras.Include(
+                                        item => item.PrincipalId,
+                                        item => item.Member.LoginName,
+                                        item => item.Member.Title,
+                                        item => item.Member.PrincipalType,
+                                        item => item.RoleDefinitionBindings));
+                            clientContext.ExecuteQuery();
+                            SetRoleAssignments(listItem.RoleAssignments, itemDict);
+                        }
+                        itemDict.Add("FieldValues", listItem.FieldValues);
+                        if (listItem.FieldValues.ContainsKey("Attachments") && (bool)listItem.FieldValues["Attachments"])
+                        {
+                            clientContext.Load(listItem.AttachmentFiles);
+                            clientContext.ExecuteQuery();
+                            List<Dictionary<string, object>> attachmentFileList = new List<Dictionary<string, object>>();
+                            foreach (Attachment attachmentFile in listItem.AttachmentFiles)
+                            {
+                                Dictionary<string, object> attachmentFileDict = new Dictionary<string, object>();
+                                attachmentFileDict.Add("Url", site + attachmentFile.ServerRelativeUrl);
+                                string filePath = baseDir + System.IO.Path.DirectorySeparatorChar  + "files" + System.IO.Path.DirectorySeparatorChar  + Guid.NewGuid().ToString() + System.IO.Path.GetExtension(attachmentFile.FileName);
+                                FileToDownload toDownload = new FileToDownload();
+                                toDownload.saveToPath = filePath;
+                                toDownload.serverRelativeUrl = attachmentFile.ServerRelativeUrl;
+                                toDownload.site = site;
+                                fileDownloadBlockingCollection.Add(toDownload);
+                                attachmentFileDict.Add("ExportPath", filePath);
+                                attachmentFileDict.Add("FileName", attachmentFile.FileName);
+                                attachmentFileList.Add(attachmentFileDict);
+                            }
+                            itemDict.Add("AttachmentFiles", attachmentFileList);
+                        }
+                        itemsList.Add(itemDict);
+                    }
+                    listDict.Add("Items", itemsList);
+                    listDict.Add("Url", site + list.RootFolder.ServerRelativeUrl);
+                    //listDict.Add("Files", IndexFolder(clientContext, list.RootFolder));
+                    if (list.HasUniqueRoleAssignments)
+                    {
+                        clientContext.Load(list.RoleAssignments,
+                        roleAssignments => roleAssignments.Include(
+                                item => item.PrincipalId,
+                                item => item.Member.LoginName,
+                                item => item.Member.Title,
+                                item => item.Member.PrincipalType,
+                                item => item.RoleDefinitionBindings
+                        ));
+                        clientContext.ExecuteQuery();
+                        SetRoleAssignments(list.RoleAssignments, listDict);
+                    }
+                    if (listToFetch.listsDict.ContainsKey(list.Id.ToString()))
+                    {
+                        Console.WriteLine("Duplicate key " + list.Id);
                     }
                     else
                     {
-                        itemDict.Add("ListItemType", "List_Item");
+                        listToFetch.listsDict.Add(list.Id.ToString(), listDict);
                     }
-                    itemDict.Add("Url", site + list.DefaultDisplayFormUrl + string.Format("?ID={0}", listItem.Id));
-                    if (listItem.HasUniqueRoleAssignments)
-                    {
-                        clientContext.Load(listItem.RoleAssignments,
-                            ras => ras.Include(
-                                    item => item.PrincipalId,
-                                    item => item.Member.LoginName,
-                                    item => item.Member.Title,
-                                    item => item.Member.PrincipalType,
-                                    item => item.RoleDefinitionBindings));
-                        clientContext.ExecuteQuery();
-                        SetRoleAssignments(listItem.RoleAssignments, itemDict);
-                    }
-                    itemDict.Add("FieldValues", listItem.FieldValues);
-                    if (listItem.FieldValues.ContainsKey("Attachments") && (bool)listItem.FieldValues["Attachments"])
-                    {
-                        clientContext.Load(listItem.AttachmentFiles);
-                        clientContext.ExecuteQuery();
-                        List<Dictionary<string, object>> attachmentFileList = new List<Dictionary<string, object>>();
-                        foreach (Attachment attachmentFile in listItem.AttachmentFiles)
-                        {
-                            Dictionary<string, object> attachmentFileDict = new Dictionary<string, object>();
-                            attachmentFileDict.Add("Url", site + attachmentFile.ServerRelativeUrl);
-                            string filePath = baseDir + System.IO.Path.DirectorySeparatorChar  + "files" + System.IO.Path.DirectorySeparatorChar  + Guid.NewGuid().ToString() + System.IO.Path.GetExtension(attachmentFile.FileName);
-                            FileToDownload toDownload = new FileToDownload();
-                            toDownload.saveToPath = filePath;
-                            toDownload.serverRelativeUrl = attachmentFile.ServerRelativeUrl;
-                            toDownload.site = site;
-                            fileDownloadBlockingCollection.Add(toDownload);
-                            attachmentFileDict.Add("ExportPath", filePath);
-                            attachmentFileDict.Add("FileName", attachmentFile.FileName);
-                            attachmentFileList.Add(attachmentFileDict);
-                        }
-                        itemDict.Add("AttachmentFiles", attachmentFileList);
-                    }
-                    itemsList.Add(itemDict);
-                }
-                listDict.Add("Items", itemsList);
-                listDict.Add("Url", site + list.RootFolder.ServerRelativeUrl);
-                //listDict.Add("Files", IndexFolder(clientContext, list.RootFolder));
-                if (list.HasUniqueRoleAssignments)
-                {
-                    clientContext.Load(list.RoleAssignments,
-                    roleAssignments => roleAssignments.Include(
-                            item => item.PrincipalId,
-                            item => item.Member.LoginName,
-                            item => item.Member.Title,
-                            item => item.Member.PrincipalType,
-                            item => item.RoleDefinitionBindings
-                    ));
-                    clientContext.ExecuteQuery();
-                    SetRoleAssignments(list.RoleAssignments, listDict);
-                }
-                if (listToFetch.listsDict.ContainsKey(list.Id.ToString()))
-                {
-                    Console.WriteLine("Duplicate key " + list.Id);
-                }
-                else
-                {
-                    listToFetch.listsDict.Add(list.Id.ToString(), listDict);
-                }
                 }
                 catch (Exception e)
                 {
@@ -192,6 +194,7 @@ namespace SpPrefetchIndexBuilder
 
         public SpPrefetchIndexBuilder(String [] args)
         {
+
             ignoreSiteNames.Add("Cache Profiles");
             ignoreSiteNames.Add("Content and Structure Reports");
             ignoreSiteNames.Add("Content Organizer Rules");
@@ -272,6 +275,10 @@ namespace SpPrefetchIndexBuilder
                 }
                 cc.Add(new Uri(site), "NTLM", nc);
             }
+            HttpClientHandler handler = new HttpClientHandler();
+			handler.Credentials = cc;
+            client = new HttpClient(handler);
+            client.Timeout = TimeSpan.FromMinutes(4);
         }
 
         static void Main(string[] args)
