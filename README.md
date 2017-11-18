@@ -33,11 +33,6 @@ Microsoft.SharePoint.Client.Taxonomy.dll
 Microsoft.SharePoint.Client.UserProfiles.dll
 Microsoft.SharePoint.Client.WorkflowServices.dll
 ```
-
-### Add the System.Web.Extensions reference
-
-Again In Solution explorer, right click References -> Add reference -> Assemblies -> Framework -> Click the check next to `System.Web.Extensions`
-
 ## How to Run the program 
 
 `USAGE: SpPrefetchIndexBuilder.exe [siteUrl] [outputDir] [domain] [username] [password]`
@@ -108,3 +103,26 @@ Creates an output directory in the `outputDir` directory you specified in the cm
 				
 				...
 ```
+
+# How to build on Linux
+
+* Install Mono. http://www.mono-project.com/download/#download-lin
+
+* Install MonoDevelop.
+
+* Open the Solution file in Mono Develop.
+
+* Copy the Sharepoint 2013 SDK DLLs into the `/path/to/Sharepoint-Exporter/SpCrawler` directory.
+
+* In solution view, Right click on Reference -> Edit References -> .NET Assembly -> Browse -> Import the DLLs you put in `/path/to/Sharepoint-Exporter/SpCrawler`
+
+* Ctrl+F8 Select the "Release" drop down from the build configuration and Ctrl+F8 to build the project.
+
+* Now run this to build the Linux .bin file:
+
+```
+cd /path/to/Sharepoint-Exporter/SpCrawler/bin/Release
+mkbundle -o SpPrefetchIndexBuilder.bin /path/to/Sharepoint-Exporter/SpCrawler/bin/Release/SpPrefetchIndexBuilder.exe -L /usr/lib/mono/4.6.1-api -L /home/ndipiazza/lucidworks/Sharepoint-Exporter/SpCrawler
+```
+
+At this point, `/path/to/Sharepoint-Exporter/SpCrawler/bin/Release/SpPrefetchIndexBuilder.bin http://yoursphost /your/output/path domain username` will work just like it had worked for Windows.
