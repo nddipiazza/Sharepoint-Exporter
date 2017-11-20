@@ -26,6 +26,7 @@ namespace SpPrefetchIndexBuilder
 				FileToDownload toDownload;
 				while (fileDownloadBlockingCollection.TryTake(out toDownload))
 				{
+                    SpPrefetchIndexBuilder.CheckAbort();
 					try
 					{
 						var responseResult = client.GetAsync(toDownload.site + toDownload.serverRelativeUrl);

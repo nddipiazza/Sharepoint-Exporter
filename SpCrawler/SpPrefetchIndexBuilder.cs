@@ -27,12 +27,20 @@ namespace SpPrefetchIndexBuilder
 
     class SpPrefetchIndexBuilder
     {
+        public static string baseDir = null;
+        public static void CheckAbort()
+        {
+            if (System.IO.File.Exists(baseDir + System.IO.Path.DirectorySeparatorChar + ".." + System.IO.Path.DirectorySeparatorChar + ".doabort")) 
+            {
+                Console.WriteLine("The .doabort file was found. Stopping program");
+                Environment.Exit(0);
+            }
+        }
         public static HttpClient client;
         public string defaultSite = "http://localhost/";
         public CredentialCache cc = null;
         public string site;
         public JavaScriptSerializer serializer = new JavaScriptSerializer();
-        public string baseDir;
         public int maxFileSizeBytes = -1;
         public static int numThreads = 50;
 
@@ -56,6 +64,7 @@ namespace SpPrefetchIndexBuilder
             {
                 try
                 {
+                    CheckAbort();
                     ClientContext clientContext = getClientContext(listToFetch.site);
                     List list = clientContext.Web.Lists.GetById(listToFetch.listId);
                     clientContext.Load(list, lslist => lslist.HasUniqueRoleAssignments, lslist => lslist.Id, lslist => lslist.Title, lslist => lslist.BaseType,
@@ -194,7 +203,6 @@ namespace SpPrefetchIndexBuilder
 
         public SpPrefetchIndexBuilder(String [] args)
         {
-
             ignoreSiteNames.Add("Cache Profiles");
             ignoreSiteNames.Add("Content and Structure Reports");
             ignoreSiteNames.Add("Content Organizer Rules");
@@ -323,6 +331,7 @@ namespace SpPrefetchIndexBuilder
 
         public void getSubWebs(string url, Dictionary<string, object> parentWebDict)
         {
+            CheckAbort();
             ClientContext clientContext = getClientContext(url);
             Web oWebsite = clientContext.Web;
             clientContext.Load(oWebsite, website => website.Webs, website => website.Title, website => website.Url, website => website.RoleDefinitions, website => website.RoleAssignments, website => website.HasUniqueRoleAssignments, website => website.Description, website => website.Id, website => website.LastItemModifiedDate);
@@ -356,6 +365,7 @@ namespace SpPrefetchIndexBuilder
 
         Dictionary<string, object> DownloadWeb(ClientContext clientContext, Web web, string url)
         {
+            CheckAbort();
             Console.WriteLine("Exporting site {0}", url);
             string listsJsonPath = baseDir + System.IO.Path.DirectorySeparatorChar  + "lists" + System.IO.Path.DirectorySeparatorChar  + Guid.NewGuid().ToString() + ".json";
             Dictionary<string, object> webDict = new Dictionary<string, object>();
