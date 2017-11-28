@@ -29,7 +29,7 @@ namespace SpPrefetchIndexBuilder
                     SpPrefetchIndexBuilder.CheckAbort();
 					try
 					{
-						var responseResult = client.GetAsync(toDownload.site + toDownload.serverRelativeUrl);
+                        var responseResult = client.GetAsync(SpPrefetchIndexBuilder.topParentSite + toDownload.serverRelativeUrl);
 						using (var memStream = responseResult.Result.Content.ReadAsStreamAsync().Result)
 						{
 							using (var fileStream = File.Create(toDownload.saveToPath))
@@ -41,7 +41,7 @@ namespace SpPrefetchIndexBuilder
 					}
 					catch (Exception e)
 					{
-                        Console.WriteLine("Got error trying to download url {0} to file {1}: {2}", toDownload.site + toDownload.serverRelativeUrl, toDownload.saveToPath, e.Message);
+                        Console.WriteLine("Got error trying to download url {0} to file {1}: {2}", SpPrefetchIndexBuilder.topParentSite + toDownload.serverRelativeUrl, toDownload.saveToPath, e.Message);
 						Console.WriteLine(e.StackTrace);
 					}
 					Console.WriteLine("Thread {0} - Finished attempt to download {1} to {2}", Thread.CurrentThread.ManagedThreadId, toDownload.serverRelativeUrl, toDownload.saveToPath);    

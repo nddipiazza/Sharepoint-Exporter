@@ -40,6 +40,7 @@ namespace SpPrefetchIndexBuilder
         public string defaultSite = "http://localhost/";
         public CredentialCache cc = null;
         public string site;
+        public static string topParentSite;
         public JavaScriptSerializer serializer = new JavaScriptSerializer();
         public int maxFileSizeBytes = -1;
         public static int numThreads = 50;
@@ -81,8 +82,8 @@ namespace SpPrefetchIndexBuilder
                             item => item.DisplayName,
                             item => item.HasUniqueRoleAssignments,
                             item => item.Folder,
-                            item => item.File
-                            //,item => item.ContentType
+                            item => item.File,
+                            item => item.ContentType
                             ));
                     clientContext.Load(list.RootFolder.Files);
                     clientContext.Load(list.RootFolder.Folders);
@@ -108,6 +109,7 @@ namespace SpPrefetchIndexBuilder
                         Dictionary<string, object> itemDict = new Dictionary<string, object>();
                         itemDict.Add("DisplayName", listItem.DisplayName);
                         itemDict.Add("Id", listItem.Id);
+                        itemDict.Add("ContentTypeName", listItem.ContentType.Name);
                         if (listItem.File.ServerObjectIsNull == false)
                         {
                             itemDict.Add("TimeLastModified", listItem.File.TimeLastModified.ToString());
@@ -131,7 +133,14 @@ namespace SpPrefetchIndexBuilder
                         {
                             itemDict.Add("ListItemType", "List_Item");
                         }
-                        itemDict.Add("Url", site + list.DefaultDisplayFormUrl + string.Format("?ID={0}", listItem.Id));
+                        if (listItem.FieldValues.ContainsKey("FileRef"))
+                        {
+                            itemDict.Add("Url", topParentSite + listItem["FileRef"]);
+                        }
+                        else
+                        {
+                            itemDict.Add("Url", topParentSite + list.DefaultDisplayFormUrl + string.Format("?ID={0}", listItem.Id));
+                        }
                         if (listItem.HasUniqueRoleAssignments)
                         {
                             clientContext.Load(listItem.RoleAssignments,
@@ -153,7 +162,7 @@ namespace SpPrefetchIndexBuilder
                             foreach (Attachment attachmentFile in listItem.AttachmentFiles)
                             {
                                 Dictionary<string, object> attachmentFileDict = new Dictionary<string, object>();
-                                attachmentFileDict.Add("Url", site + attachmentFile.ServerRelativeUrl);
+                                attachmentFileDict.Add("Url", topParentSite + attachmentFile.ServerRelativeUrl);
                                 string filePath = baseDir + System.IO.Path.DirectorySeparatorChar  + "files" + System.IO.Path.DirectorySeparatorChar  + Guid.NewGuid().ToString() + System.IO.Path.GetExtension(attachmentFile.FileName);
                                 FileToDownload toDownload = new FileToDownload();
                                 toDownload.saveToPath = filePath;
@@ -169,7 +178,7 @@ namespace SpPrefetchIndexBuilder
                         itemsList.Add(itemDict);
                     }
                     listDict.Add("Items", itemsList);
-                    listDict.Add("Url", site + list.RootFolder.ServerRelativeUrl);
+                    listDict.Add("Url", topParentSite + list.RootFolder.ServerRelativeUrl);
                     //listDict.Add("Files", IndexFolder(clientContext, list.RootFolder));
                     if (list.HasUniqueRoleAssignments)
                     {
@@ -239,52 +248,109 @@ namespace SpPrefetchIndexBuilder
             ignoreSiteNames.Add("Site Assets");
             ignoreSiteNames.Add("Site Pages");
 
-            String spMaxFileSizeBytes = Environment.GetEnvironmentVariable("SP_MAX_FILE_SIZE_BYTES");
+            string spMaxFileSizeBytes = Environment.GetEnvironmentVariable("SP_MAX_FILE_SIZE_BYTES");
             if (spMaxFileSizeBytes != null)
             {
                 maxFileSizeBytes = int.Parse(spMaxFileSizeBytes);
             }
-            String spNumThreads = Environment.GetEnvironmentVariable("SP_NUM_THREADS");
+            string spNumThreads = Environment.GetEnvironmentVariable("SP_NUM_THREADS");
             if (spNumThreads != null)
             {
                 numThreads = int.Parse(spNumThreads);
             }
-            serializer.MaxJsonLength = 209715200;
-            if (args.Length >= 2 && (args[0].Equals("--help") || args[0].Equals("-help") || args[0].Equals("/help") || args.Length > 5 || args.Length == 3))
+            serializer.MaxJsonLength = 1677721600;
+
+            site = defaultSite;
+            topParentSite = null;
+
+            bool help = false;
+
+            string spDomain = null;
+            string spUsername = null;
+            string spPassword = Environment.GetEnvironmentVariable("SP_PWD");
+            baseDir = System.IO.Directory.GetCurrentDirectory();
+
+            foreach (string arg in args)
             {
-                Console.WriteLine("USAGE: SpPrefetchIndexBuilder.exe [siteUrl] [outputDir] [domain] [username] [password (not recommended, do not specify to be prompted or use SP_PWD environment variable)]");
+                if (arg.Equals("--help") || arg.Equals("-help") || arg.Equals("/help"))
+                {
+                    help = true;
+                    break;
+                }
+                else if (arg.StartsWith("--siteUrl=")) 
+                {
+                    site = arg.Split(new Char[] { '=' })[1];
+                }
+				else if (arg.StartsWith("--topParentSiteUrl="))
+				{
+					topParentSite = arg.Split(new Char[] { '=' })[1];
+				}
+				else if (arg.StartsWith("--outputDir="))
+				{
+					baseDir = arg.Split(new Char[] { '=' })[1];
+				}
+				else if (arg.StartsWith("--domain="))
+				{
+                    spDomain = arg.Split(new Char[] { '=' })[1];
+				}
+				else if (arg.StartsWith("--username="))
+				{
+                    spUsername = arg.Split(new Char[] { '=' })[1];
+				}
+                else if (arg.StartsWith("--password="))
+                {
+                    spPassword = arg.Split(new Char[] { '=' })[1];
+                }
+				else if (arg.StartsWith("--numThreads="))
+				{
+                    numThreads = int.Parse(arg.Split(new Char[] { '=' })[1]);
+				}
+				else if (arg.StartsWith("--maxFileSizeBytes="))
+				{
+                    maxFileSizeBytes = int.Parse(arg.Split(new Char[] { '=' })[1]);
+				}
+                else 
+                {
+                    help = true;
+                }
             }
-            site = args.Length > 0 ? args[0] : defaultSite;
-            baseDir = args.Length > 1 ? args[1] : System.IO.Directory.GetCurrentDirectory();
-            baseDir = baseDir + System.IO.Path.DirectorySeparatorChar  + Guid.NewGuid().ToString().Substring(0, 8);
+
+            if (help) 
+            {
+				Console.WriteLine("USAGE: SpPrefetchIndexBuilder.exe --siteUrl=siteUrl --topParentSiteUrl=[topParentSiteUrl] --outputDir=[outputDir] --domain=[domain] --username=[username] --password=[password (not recommended, do not specify to be prompted or use SP_PWD environment variable)] --numThreads=[optional number of threads to use while fetching] --maxFileSizeBytes=[optional maximum file size]");
+				Environment.Exit(0);    
+            }
+
+            if (topParentSite == null)
+			{
+				topParentSite = site;
+			}
+
+			baseDir = baseDir + System.IO.Path.DirectorySeparatorChar  + Guid.NewGuid().ToString().Substring(0, 8);
             System.IO.Directory.CreateDirectory(baseDir + System.IO.Path.DirectorySeparatorChar  + "lists");
             System.IO.Directory.CreateDirectory(baseDir + System.IO.Path.DirectorySeparatorChar  + "files");
             if (site.EndsWith("/"))
             {
                 site = site.Substring(0, site.Length - 1);
             }
-            if (args.Length > 2)
+            if (topParentSite.EndsWith("/"))
+			{
+				topParentSite = topParentSite.Substring(0, topParentSite.Length - 1);
+			}
+            cc = new CredentialCache();
+            NetworkCredential nc;
+            if (spPassword == null)
             {
-                cc = new CredentialCache();
-                String spPassword = Environment.GetEnvironmentVariable("SP_PWD");
-                if (spPassword == null)
-                {
-                    spPassword = args.Length >= 5 ? args[4] : null;
-                }
-                NetworkCredential nc;
-                if (spPassword == null)
-                {
-                    Console.WriteLine("Please enter password for {0}", args[3]);
-                    nc = new NetworkCredential(args[3], GetPassword(), args[2]);
-                }
-                else
-                {
-                    nc = new NetworkCredential(args[3], spPassword, args[2]);
-                }
-                cc.Add(new Uri(site), "NTLM", nc);
+                Console.WriteLine("Please enter password for {0}", spUsername);
+                nc = new NetworkCredential(spUsername, GetPassword(), spDomain);
             }
+            else
+            {
+                nc = new NetworkCredential(spUsername, spPassword, spDomain);
+            }
+            cc.Add(new Uri(site), "NTLM", nc);
             HttpClientHandler handler = new HttpClientHandler();
-			handler.Credentials = cc;
+            handler.Credentials = cc;
             client = new HttpClient(handler);
             client.Timeout = TimeSpan.FromMinutes(4);
         }
