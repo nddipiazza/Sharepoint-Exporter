@@ -41,8 +41,12 @@ namespace SpPrefetchIndexBuilder
 					}
 					catch (Exception e)
 					{
-                        Console.WriteLine("Got error trying to download url {0} to file {1}: {2}", SpPrefetchIndexBuilder.topParentSite + toDownload.serverRelativeUrl, toDownload.saveToPath, e.Message);
-						Console.WriteLine(e.StackTrace);
+						Exception cause = e;
+						while (e.InnerException != null)
+						{
+							cause = e.InnerException;
+						}
+                        Console.WriteLine("Got error trying to download url {0} to file {1}: {2}\n{3}", SpPrefetchIndexBuilder.topParentSite + toDownload.serverRelativeUrl, toDownload.saveToPath, cause.Message, cause.StackTrace);
 					}
 					Console.WriteLine("Thread {0} - Finished attempt to download {1} to {2}", Thread.CurrentThread.ManagedThreadId, toDownload.serverRelativeUrl, toDownload.saveToPath);    
                 }

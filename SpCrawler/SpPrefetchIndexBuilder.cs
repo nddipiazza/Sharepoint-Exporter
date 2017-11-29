@@ -109,8 +109,22 @@ namespace SpPrefetchIndexBuilder
                         Dictionary<string, object> itemDict = new Dictionary<string, object>();
                         itemDict.Add("DisplayName", listItem.DisplayName);
                         itemDict.Add("Id", listItem.Id);
-                        itemDict.Add("ContentTypeName", listItem.ContentType.Name);
-                        if (listItem.File.ServerObjectIsNull == false)
+                        string contentTypeName = "";
+                        try {
+                            contentTypeName = listItem.ContentType.Name;
+                        } catch (Exception excep) {
+                            Console.WriteLine("Couldn't get listItem.ContentType.Name for list item {0} due to {1}", listItem.Id, excep.Message);
+                        }
+                        itemDict.Add("ContentTypeName", contentTypeName);
+						if (contentTypeName.Equals("Document") && listItem.FieldValues.ContainsKey("FileRef"))
+						{
+							itemDict.Add("Url", topParentSite + listItem["FileRef"]);
+						}
+						else
+						{
+							itemDict.Add("Url", topParentSite + list.DefaultDisplayFormUrl + string.Format("?ID={0}", listItem.Id));
+						}
+						if (listItem.File.ServerObjectIsNull == false)
                         {
                             itemDict.Add("TimeLastModified", listItem.File.TimeLastModified.ToString());
                             itemDict.Add("ListItemType", "List_Item");
@@ -132,14 +146,6 @@ namespace SpPrefetchIndexBuilder
                         else
                         {
                             itemDict.Add("ListItemType", "List_Item");
-                        }
-                        if (listItem.FieldValues.ContainsKey("FileRef"))
-                        {
-                            itemDict.Add("Url", topParentSite + listItem["FileRef"]);
-                        }
-                        else
-                        {
-                            itemDict.Add("Url", topParentSite + list.DefaultDisplayFormUrl + string.Format("?ID={0}", listItem.Id));
                         }
                         if (listItem.HasUniqueRoleAssignments)
                         {
@@ -372,6 +378,7 @@ namespace SpPrefetchIndexBuilder
             {
                 Console.WriteLine("Prefetch index building failed for {0}: {1}", string.Join(" ", args), anyException.Message);
                 Console.WriteLine(anyException.StackTrace);
+                Environment.Exit(1);
             }
         }
 
