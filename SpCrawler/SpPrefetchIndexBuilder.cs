@@ -44,6 +44,7 @@ namespace SpPrefetchIndexBuilder
         public JavaScriptSerializer serializer = new JavaScriptSerializer();
         public int maxFileSizeBytes = -1;
         public static int numThreads = 50;
+        public static Boolean onlyWebs = false;
 
         public BlockingCollection<ListToFetch> listFetchBlockingCollection = new BlockingCollection<ListToFetch>();
         public BlockingCollection<FileToDownload> fileDownloadBlockingCollection = new BlockingCollection<FileToDownload>();
@@ -315,6 +316,10 @@ namespace SpPrefetchIndexBuilder
 				{
                     maxFileSizeBytes = int.Parse(arg.Split(new Char[] { '=' })[1]);
 				}
+                else if (arg.StartsWith("--onlyWebs="))
+                {
+                    onlyWebs = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
+                }
                 else 
                 {
                     help = true;
@@ -368,11 +373,14 @@ namespace SpPrefetchIndexBuilder
                 Stopwatch sw = Stopwatch.StartNew();
                 SpPrefetchIndexBuilder spib = new SpPrefetchIndexBuilder(args);
                 spib.getSubWebs(spib.site, null);
-                Parallel.For(0, numThreads, x => spib.FetchList());
-                spib.writeAllListsToJson();
-                Console.WriteLine("Metadata complete. Took {0} milliseconds.", sw.ElapsedMilliseconds);
-                Console.WriteLine("Downloading the files recieved during the index building");
-                Parallel.For(0, numThreads, x => spib.DownloadFilesFromQueue());
+                if (!onlyWebs)
+                {
+                    Parallel.For(0, numThreads, x => spib.FetchList());
+                    spib.writeAllListsToJson();
+                    Console.WriteLine("Metadata complete. Took {0} milliseconds.", sw.ElapsedMilliseconds);
+                    Console.WriteLine("Downloading the files recieved during the index building");
+                    Parallel.For(0, numThreads, x => spib.DownloadFilesFromQueue());
+                }
                 Console.WriteLine("Export complete. Took {0} milliseconds.", sw.ElapsedMilliseconds);
             } catch (Exception anyException)
             {
