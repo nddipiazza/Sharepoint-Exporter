@@ -9,6 +9,9 @@ using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using System.Threading;
 using System.Net.Http;
+using System.Xml;
+using System.IO;
+
 
 namespace SpPrefetchIndexBuilder
 {
@@ -16,6 +19,7 @@ namespace SpPrefetchIndexBuilder
     {
         public String url;
         public Dictionary<string, object> webDict;
+        public bool isTopLevel;
     }
 
     class ListToFetch
@@ -36,7 +40,7 @@ namespace SpPrefetchIndexBuilder
         public static string baseDir = null;
         public static void CheckAbort()
         {
-            if (System.IO.File.Exists(baseDir + System.IO.Path.DirectorySeparatorChar + ".." + System.IO.Path.DirectorySeparatorChar + ".doabort")) 
+            if (System.IO.File.Exists(baseDir + Path.DirectorySeparatorChar + ".." + Path.DirectorySeparatorChar + ".doabort")) 
             {
                 Console.WriteLine("The .doabort file was found. Stopping program");
                 Environment.Exit(0);
@@ -53,6 +57,7 @@ namespace SpPrefetchIndexBuilder
         public static bool onlyWebs = false;
         public static bool excludeRoleDefinitions = false;
         public static bool excludeRoleAssignments = false;
+        public static bool deleteExistingOutputDir = false;
 
         public BlockingCollection<ListToFetch> listFetchBlockingCollection = new BlockingCollection<ListToFetch>();
         public BlockingCollection<WebToFetch> webFetchBlockingCollection = new BlockingCollection<WebToFetch>();
@@ -62,7 +67,206 @@ namespace SpPrefetchIndexBuilder
 
         public List<string> ignoreSiteNames = new List<string>();
 
-        public void DownloadFilesFromQueue()
+		public SpPrefetchIndexBuilder(String[] args)
+		{
+			ignoreSiteNames.Add("Cache Profiles");
+			ignoreSiteNames.Add("Content and Structure Reports");
+			ignoreSiteNames.Add("Content Organizer Rules");
+			ignoreSiteNames.Add("Content type publishing error log");
+			ignoreSiteNames.Add("Converted Forms");
+			ignoreSiteNames.Add("Device Channels");
+			ignoreSiteNames.Add("Drop Off Library");
+			ignoreSiteNames.Add("Form Templates");
+			ignoreSiteNames.Add("Hold Reports");
+			ignoreSiteNames.Add("Holds");
+			ignoreSiteNames.Add("Long Running Operation Status");
+			ignoreSiteNames.Add("MicroFeed");
+			ignoreSiteNames.Add("Notification List");
+			ignoreSiteNames.Add("Project Policy Item List");
+			ignoreSiteNames.Add("Quick Deploy Items");
+			ignoreSiteNames.Add("Relationships List");
+			ignoreSiteNames.Add("Reusable Content");
+			ignoreSiteNames.Add("Site Collection Documents");
+			ignoreSiteNames.Add("Site Collection Images");
+			ignoreSiteNames.Add("Solution Gallery");
+			ignoreSiteNames.Add("Style Library");
+			ignoreSiteNames.Add("Submitted E-mail Records");
+			ignoreSiteNames.Add("Suggested Content Browser Locations");
+			ignoreSiteNames.Add("TaxonomyHiddenList");
+			ignoreSiteNames.Add("Theme Gallery");
+			ignoreSiteNames.Add("Translation Packages");
+			ignoreSiteNames.Add("Translation Status");
+			ignoreSiteNames.Add("User Information List");
+			ignoreSiteNames.Add("Variation Labels");
+			ignoreSiteNames.Add("Web Part Gallery");
+			ignoreSiteNames.Add("wfpub");
+			ignoreSiteNames.Add("Composed Looks");
+			ignoreSiteNames.Add("Master Page Gallery");
+			ignoreSiteNames.Add("Site Assets");
+			ignoreSiteNames.Add("Site Pages");
+
+			string spMaxFileSizeBytes = Environment.GetEnvironmentVariable("SP_MAX_FILE_SIZE_BYTES");
+			if (spMaxFileSizeBytes != null)
+			{
+				maxFileSizeBytes = int.Parse(spMaxFileSizeBytes);
+			}
+			string spNumThreads = Environment.GetEnvironmentVariable("SP_NUM_THREADS");
+			if (spNumThreads != null)
+			{
+				numThreads = int.Parse(spNumThreads);
+			}
+			serializer.MaxJsonLength = 1677721600;
+
+			site = defaultSite;
+
+			bool help = false;
+
+			string spDomain = null;
+			string spUsername = null;
+			string spPassword = Environment.GetEnvironmentVariable("SP_PWD");
+			baseDir = Directory.GetCurrentDirectory();
+			bool customBaseDir = false;
+
+			foreach (string arg in args)
+			{
+				if (arg.Equals("--help") || arg.Equals("-help") || arg.Equals("/help"))
+				{
+					help = true;
+					break;
+				}
+				else if (arg.StartsWith("--siteUrl="))
+				{
+					site = arg.Split(new Char[] { '=' })[1];
+				}
+				else if (arg.StartsWith("--outputDir="))
+				{
+					baseDir = arg.Split(new Char[] { '=' })[1];
+					customBaseDir = true;
+				}
+				else if (arg.StartsWith("--domain="))
+				{
+					spDomain = arg.Split(new Char[] { '=' })[1];
+				}
+				else if (arg.StartsWith("--username="))
+				{
+					spUsername = arg.Split(new Char[] { '=' })[1];
+				}
+				else if (arg.StartsWith("--password="))
+				{
+					spPassword = arg.Split(new Char[] { '=' })[1];
+				}
+				else if (arg.StartsWith("--numThreads="))
+				{
+					numThreads = int.Parse(arg.Split(new Char[] { '=' })[1]);
+				}
+				else if (arg.StartsWith("--maxFileSizeBytes="))
+				{
+					maxFileSizeBytes = int.Parse(arg.Split(new Char[] { '=' })[1]);
+				}
+				else if (arg.StartsWith("--onlyWebs="))
+				{
+					onlyWebs = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
+				}
+				else if (arg.StartsWith("--excludeRoleAssignments="))
+				{
+					excludeRoleAssignments = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
+				}
+				else if (arg.StartsWith("--excludeRoleDefinitions="))
+				{
+					excludeRoleDefinitions = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
+				}
+				else if (arg.StartsWith("--deleteExistingOutputDir="))
+				{
+					deleteExistingOutputDir = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
+				}
+				else
+				{
+					help = true;
+				}
+			}
+
+			if (help)
+			{
+				Console.WriteLine("USAGE: SpPrefetchIndexBuilder.exe --siteUrl=siteUrl --outputDir=[outputDir] --domain=[domain] --username=[username] --password=[password (not recommended, do not specify to be prompted or use SP_PWD environment variable)] --numThreads=[optional number of threads to use while fetching] --maxFileSizeBytes=[optional maximum file size]");
+				Environment.Exit(0);
+			}
+
+			if (customBaseDir && deleteExistingOutputDir && Directory.Exists(baseDir))
+			{
+				deleteDirectory(baseDir);
+			}
+			Directory.CreateDirectory(baseDir);
+			if (!onlyWebs)
+			{
+				Directory.CreateDirectory(baseDir + Path.DirectorySeparatorChar + "lists");
+				Directory.CreateDirectory(baseDir + Path.DirectorySeparatorChar + "files");
+			}
+			if (site.EndsWith("/"))
+			{
+				site = site.Substring(0, site.Length - 1);
+			}
+			cc = new CredentialCache();
+			NetworkCredential nc;
+			if (spPassword == null)
+			{
+				Console.WriteLine("Please enter password for {0}", spUsername);
+				nc = new NetworkCredential(spUsername, GetPassword(), spDomain);
+			}
+			else
+			{
+				nc = new NetworkCredential(spUsername, spPassword, spDomain);
+			}
+			cc.Add(new Uri(site), "NTLM", nc);
+			HttpClientHandler handler = new HttpClientHandler();
+			handler.Credentials = cc;
+			client = new HttpClient(handler);
+			client.Timeout = TimeSpan.FromMinutes(4);
+		}
+
+
+		static void Main(string[] args)
+		{
+			try
+			{
+				Stopwatch sw = Stopwatch.StartNew();
+				SpPrefetchIndexBuilder spib = new SpPrefetchIndexBuilder(args);
+
+				List<string> topParentSites = spib.GetAllTopLevelSites();
+
+                Console.WriteLine("Starting export of top level sites {0}", string.Join(", ", topParentSites));
+
+				topParentSite = spib.site;
+
+				foreach (String nextTopParentSite in topParentSites)
+				{
+                    Stopwatch swWeb = Stopwatch.StartNew();
+                    spib.getSubWebs(topParentSite, null);
+					Parallel.For(0, numThreads, x => spib.FetchWeb());
+					spib.writeWebJson();
+					Console.WriteLine("Web fetch of {0} complete. Took {1} milliseconds.", topParentSite, swWeb.ElapsedMilliseconds);
+
+					if (!onlyWebs)
+					{
+                        Stopwatch swLists = Stopwatch.StartNew();
+						Parallel.For(0, numThreads, x => spib.FetchList());
+						spib.writeAllListsToJson();
+						Console.WriteLine("Lists metadata dump of {0} complete. Took {1} milliseconds.", topParentSite, swLists.ElapsedMilliseconds);
+						Console.WriteLine("Downloading the files recieved during the index building");
+						Parallel.For(0, numThreads, x => spib.DownloadFilesFromQueue());
+					}
+				}
+				Console.WriteLine("Export complete. Took {0} milliseconds.", sw.ElapsedMilliseconds);
+			}
+			catch (Exception anyException)
+			{
+				Console.WriteLine("Prefetch index building failed for {0}: {1}", string.Join(" ", args), anyException.Message);
+				Console.WriteLine(anyException.StackTrace);
+				Environment.Exit(1);
+			}
+		}
+
+
+		public void DownloadFilesFromQueue()
         {
             //Console.WriteLine("Starting Thread {0}", Thread.CurrentThread.ManagedThreadId);
             FileDownloader.DownloadFiles(fileDownloadBlockingCollection, 240000, client);
@@ -87,8 +291,17 @@ namespace SpPrefetchIndexBuilder
 				{
 					clientContext.Load(web, website => website.Webs, website => website.Title, website => website.Url, website => website.RoleDefinitions, website => website.RoleAssignments, website => website.HasUniqueRoleAssignments, website => website.Description, website => website.Id, website => website.LastItemModifiedDate);
 				}
-				clientContext.ExecuteQuery();
-				string listsJsonPath = baseDir + System.IO.Path.DirectorySeparatorChar + "lists" + System.IO.Path.DirectorySeparatorChar + Guid.NewGuid().ToString() + ".json";
+                try 
+                {
+                    clientContext.ExecuteQuery();
+				}
+                catch (Exception ex)
+                {
+                    Console.WriteLine("Could not load site {0} because of Error {1}", url, ex.Message);
+                    continue;
+                }
+                string listsFileName = Guid.NewGuid().ToString() + ".json";
+				string listsJsonPath = baseDir + Path.DirectorySeparatorChar + "lists" + Path.DirectorySeparatorChar + listsFileName;
                 Dictionary<string, object> webDict = webToFetch.webDict;
 				webDict.Add("Title", web.Title);
 				webDict.Add("Id", web.Id);
@@ -97,7 +310,7 @@ namespace SpPrefetchIndexBuilder
 				webDict.Add("LastItemModifiedDate", web.LastItemModifiedDate.ToString());
 				if (!onlyWebs)
 				{
-					webDict.Add("ListsJsonPath", listsJsonPath);
+					webDict.Add("ListsFileName", listsFileName);
 				}
 				if (!excludeRoleAssignments && web.HasUniqueRoleAssignments)
 				{
@@ -139,37 +352,40 @@ namespace SpPrefetchIndexBuilder
 				clientContext.ExecuteQuery();
 
 				Dictionary<string, object> usersAndGroupsDict = new Dictionary<string, object>();
-				foreach (Group group in groups)
-				{
-					Dictionary<string, object> groupDict = new Dictionary<string, object>();
-					groupDict.Add("Id", "" + group.Id);
-					groupDict.Add("LoginName", group.LoginName);
-					groupDict.Add("PrincipalType", group.PrincipalType.ToString());
-					groupDict.Add("Title", group.Title);
-					Dictionary<string, object> innerUsersDict = new Dictionary<string, object>();
-					foreach (User user in group.Users)
+				if (webToFetch.isTopLevel)
+                {
+					foreach (Group group in groups)
 					{
-						Dictionary<string, object> innerUserDict = new Dictionary<string, object>();
-						innerUserDict.Add("LoginName", user.LoginName);
-						innerUserDict.Add("Id", "" + user.Id);
-						innerUserDict.Add("PrincipalType", user.PrincipalType.ToString());
-						innerUserDict.Add("IsSiteAdmin", "" + user.IsSiteAdmin);
-						innerUserDict.Add("Title", user.Title);
-						innerUsersDict.Add(user.LoginName, innerUserDict);
+						Dictionary<string, object> groupDict = new Dictionary<string, object>();
+						groupDict.Add("Id", "" + group.Id);
+						groupDict.Add("LoginName", group.LoginName);
+						groupDict.Add("PrincipalType", group.PrincipalType.ToString());
+						groupDict.Add("Title", group.Title);
+						Dictionary<string, object> innerUsersDict = new Dictionary<string, object>();
+						foreach (User user in group.Users)
+						{
+							Dictionary<string, object> innerUserDict = new Dictionary<string, object>();
+							innerUserDict.Add("LoginName", user.LoginName);
+							innerUserDict.Add("Id", "" + user.Id);
+							innerUserDict.Add("PrincipalType", user.PrincipalType.ToString());
+							innerUserDict.Add("IsSiteAdmin", "" + user.IsSiteAdmin);
+							innerUserDict.Add("Title", user.Title);
+							innerUsersDict.Add(user.LoginName, innerUserDict);
+						}
+						groupDict.Add("Users", innerUsersDict);
+						usersAndGroupsDict.Add(group.LoginName, groupDict);
 					}
-					groupDict.Add("Users", innerUsersDict);
-					usersAndGroupsDict.Add(group.LoginName, groupDict);
-				}
-				foreach (User user in users)
-				{
-					Dictionary<string, object> userDict = new Dictionary<string, object>();
-					userDict.Add("LoginName", user.LoginName);
-					userDict.Add("Id", "" + user.Id);
-					userDict.Add("PrincipalType", user.PrincipalType.ToString());
-					userDict.Add("IsSiteAdmin", "" + user.IsSiteAdmin);
-					userDict.Add("Title", user.Title);
-					usersAndGroupsDict.Add(user.LoginName, userDict);
-				}
+					foreach (User user in users)
+					{
+						Dictionary<string, object> userDict = new Dictionary<string, object>();
+						userDict.Add("LoginName", user.LoginName);
+						userDict.Add("Id", "" + user.Id);
+						userDict.Add("PrincipalType", user.PrincipalType.ToString());
+						userDict.Add("IsSiteAdmin", "" + user.IsSiteAdmin);
+						userDict.Add("Title", user.Title);
+						usersAndGroupsDict.Add(user.LoginName, userDict);
+					}   
+                }
 				webDict.Add("UsersAndGroups", usersAndGroupsDict);
 				Dictionary<string, object> listsDict = new Dictionary<string, object>();
 				foreach (List list in lists)
@@ -266,7 +482,7 @@ namespace SpPrefetchIndexBuilder
                             itemDict.Add("ListItemType", "List_Item");
                             if (maxFileSizeBytes < 0 || listItem.FieldValues.ContainsKey("File_x0020_Size") == false || int.Parse((string)listItem.FieldValues["File_x0020_Size"]) < maxFileSizeBytes)
                             {
-                                string filePath = baseDir + System.IO.Path.DirectorySeparatorChar  + "files" + System.IO.Path.DirectorySeparatorChar  + Guid.NewGuid().ToString() + System.IO.Path.GetExtension(listItem.File.Name);
+                                string filePath = baseDir + Path.DirectorySeparatorChar  + "files" + Path.DirectorySeparatorChar  + Guid.NewGuid().ToString() + Path.GetExtension(listItem.File.Name);
                                 FileToDownload toDownload = new FileToDownload();
                                 toDownload.saveToPath = filePath;
                                 toDownload.serverRelativeUrl = listItem.File.ServerRelativeUrl;
@@ -305,7 +521,7 @@ namespace SpPrefetchIndexBuilder
                             {
                                 Dictionary<string, object> attachmentFileDict = new Dictionary<string, object>();
                                 attachmentFileDict.Add("Url", topParentSite + attachmentFile.ServerRelativeUrl);
-                                string filePath = baseDir + System.IO.Path.DirectorySeparatorChar  + "files" + System.IO.Path.DirectorySeparatorChar  + Guid.NewGuid().ToString() + System.IO.Path.GetExtension(attachmentFile.FileName);
+                                string filePath = baseDir + Path.DirectorySeparatorChar  + "files" + Path.DirectorySeparatorChar  + Guid.NewGuid().ToString() + Path.GetExtension(attachmentFile.FileName);
                                 FileToDownload toDownload = new FileToDownload();
                                 toDownload.saveToPath = filePath;
                                 toDownload.serverRelativeUrl = attachmentFile.ServerRelativeUrl;
@@ -352,199 +568,28 @@ namespace SpPrefetchIndexBuilder
             }
         }
 
-        public SpPrefetchIndexBuilder(String [] args)
+        public static void deleteDirectory(string targetDir)
         {
-            ignoreSiteNames.Add("Cache Profiles");
-            ignoreSiteNames.Add("Content and Structure Reports");
-            ignoreSiteNames.Add("Content Organizer Rules");
-            ignoreSiteNames.Add("Content type publishing error log");
-            ignoreSiteNames.Add("Converted Forms");
-            ignoreSiteNames.Add("Device Channels");
-            ignoreSiteNames.Add("Drop Off Library");
-            ignoreSiteNames.Add("Form Templates");
-            ignoreSiteNames.Add("Hold Reports");
-            ignoreSiteNames.Add("Holds");
-            ignoreSiteNames.Add("Long Running Operation Status");
-            ignoreSiteNames.Add("MicroFeed");
-            ignoreSiteNames.Add("Notification List");
-            ignoreSiteNames.Add("Project Policy Item List");
-            ignoreSiteNames.Add("Quick Deploy Items");
-            ignoreSiteNames.Add("Relationships List");
-            ignoreSiteNames.Add("Reusable Content");
-            ignoreSiteNames.Add("Site Collection Documents");
-            ignoreSiteNames.Add("Site Collection Images");
-            ignoreSiteNames.Add("Solution Gallery");
-            ignoreSiteNames.Add("Style Library");
-            ignoreSiteNames.Add("Submitted E-mail Records");
-            ignoreSiteNames.Add("Suggested Content Browser Locations");
-            ignoreSiteNames.Add("TaxonomyHiddenList");
-            ignoreSiteNames.Add("Theme Gallery");
-            ignoreSiteNames.Add("Translation Packages");
-            ignoreSiteNames.Add("Translation Status");
-            ignoreSiteNames.Add("User Information List");
-            ignoreSiteNames.Add("Variation Labels");
-            ignoreSiteNames.Add("Web Part Gallery");
-            ignoreSiteNames.Add("wfpub");
-            ignoreSiteNames.Add("Composed Looks");
-            ignoreSiteNames.Add("Master Page Gallery");
-            ignoreSiteNames.Add("Site Assets");
-            ignoreSiteNames.Add("Site Pages");
+            string[] files = Directory.GetFiles(targetDir);
+            string[] dirs = Directory.GetDirectories(targetDir);
 
-            string spMaxFileSizeBytes = Environment.GetEnvironmentVariable("SP_MAX_FILE_SIZE_BYTES");
-            if (spMaxFileSizeBytes != null)
+            foreach (string file in files)
             {
-                maxFileSizeBytes = int.Parse(spMaxFileSizeBytes);
-            }
-            string spNumThreads = Environment.GetEnvironmentVariable("SP_NUM_THREADS");
-            if (spNumThreads != null)
-            {
-                numThreads = int.Parse(spNumThreads);
-            }
-            serializer.MaxJsonLength = 1677721600;
-
-            site = defaultSite;
-            topParentSite = null;
-
-            bool help = false;
-
-            string spDomain = null;
-            string spUsername = null;
-            string spPassword = Environment.GetEnvironmentVariable("SP_PWD");
-            baseDir = System.IO.Directory.GetCurrentDirectory();
-
-            foreach (string arg in args)
-            {
-                if (arg.Equals("--help") || arg.Equals("-help") || arg.Equals("/help"))
-                {
-                    help = true;
-                    break;
-                }
-                else if (arg.StartsWith("--siteUrl=")) 
-                {
-                    site = arg.Split(new Char[] { '=' })[1];
-                }
-				else if (arg.StartsWith("--topParentSiteUrl="))
-				{
-					topParentSite = arg.Split(new Char[] { '=' })[1];
-				}
-				else if (arg.StartsWith("--outputDir="))
-				{
-					baseDir = arg.Split(new Char[] { '=' })[1];
-				}
-				else if (arg.StartsWith("--domain="))
-				{
-                    spDomain = arg.Split(new Char[] { '=' })[1];
-				}
-				else if (arg.StartsWith("--username="))
-				{
-                    spUsername = arg.Split(new Char[] { '=' })[1];
-				}
-                else if (arg.StartsWith("--password="))
-                {
-                    spPassword = arg.Split(new Char[] { '=' })[1];
-                }
-				else if (arg.StartsWith("--numThreads="))
-				{
-                    numThreads = int.Parse(arg.Split(new Char[] { '=' })[1]);
-				}
-				else if (arg.StartsWith("--maxFileSizeBytes="))
-				{
-                    maxFileSizeBytes = int.Parse(arg.Split(new Char[] { '=' })[1]);
-				}
-                else if (arg.StartsWith("--onlyWebs="))
-                {
-                    onlyWebs = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
-                }
-				else if (arg.StartsWith("--excludeRoleAssignments="))
-				{
-					excludeRoleAssignments = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
-				}
-				else if (arg.StartsWith("--excludeRoleDefinitions="))
-				{
-					excludeRoleDefinitions = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
-				}
-                else 
-                {
-                    help = true;
-                }
+                System.IO.File.SetAttributes(file, FileAttributes.Normal);
+                System.IO.File.Delete(file);
             }
 
-            if (help) 
+            foreach (string dir in dirs)
             {
-				Console.WriteLine("USAGE: SpPrefetchIndexBuilder.exe --siteUrl=siteUrl --topParentSiteUrl=[topParentSiteUrl] --outputDir=[outputDir] --domain=[domain] --username=[username] --password=[password (not recommended, do not specify to be prompted or use SP_PWD environment variable)] --numThreads=[optional number of threads to use while fetching] --maxFileSizeBytes=[optional maximum file size]");
-				Environment.Exit(0);    
+                deleteDirectory(dir);
             }
 
-            if (topParentSite == null)
-			{
-				topParentSite = site;
-			}
-
-			baseDir = baseDir + System.IO.Path.DirectorySeparatorChar  + Guid.NewGuid().ToString().Substring(0, 8);
-            System.IO.Directory.CreateDirectory(baseDir);
-            if (!onlyWebs) 
-            {
-				System.IO.Directory.CreateDirectory(baseDir + System.IO.Path.DirectorySeparatorChar + "lists");
-				System.IO.Directory.CreateDirectory(baseDir + System.IO.Path.DirectorySeparatorChar + "files");
-			}
-            if (site.EndsWith("/"))
-            {
-                site = site.Substring(0, site.Length - 1);
-            }
-            if (topParentSite.EndsWith("/"))
-			{
-				topParentSite = topParentSite.Substring(0, topParentSite.Length - 1);
-			}
-            cc = new CredentialCache();
-            NetworkCredential nc;
-            if (spPassword == null)
-            {
-                Console.WriteLine("Please enter password for {0}", spUsername);
-                nc = new NetworkCredential(spUsername, GetPassword(), spDomain);
-            }
-            else
-            {
-                nc = new NetworkCredential(spUsername, spPassword, spDomain);
-            }
-            cc.Add(new Uri(site), "NTLM", nc);
-            HttpClientHandler handler = new HttpClientHandler();
-            handler.Credentials = cc;
-            client = new HttpClient(handler);
-            client.Timeout = TimeSpan.FromMinutes(4);
+            Directory.Delete(targetDir, false);
         }
 
-        static void Main(string[] args)
+        void writeWebJson()
         {
-            try
-            {
-                Stopwatch sw = Stopwatch.StartNew();
-                SpPrefetchIndexBuilder spib = new SpPrefetchIndexBuilder(args);
-
-				spib.getSubWebs(spib.site, null);
-				Parallel.For(0, numThreads, x => spib.FetchWeb());
-                spib.writeWebJson();
-                Console.WriteLine("Web fetch complete. Took {0} milliseconds.", sw.ElapsedMilliseconds);				
-
-                if (!onlyWebs)
-                {
-                    Parallel.For(0, numThreads, x => spib.FetchList());
-                    spib.writeAllListsToJson();
-                    Console.WriteLine("Lists metadata dump complete. Took {0} milliseconds.", sw.ElapsedMilliseconds);
-                    Console.WriteLine("Downloading the files recieved during the index building");
-                    Parallel.For(0, numThreads, x => spib.DownloadFilesFromQueue());
-                }
-                Console.WriteLine("Export complete. Took {0} milliseconds.", sw.ElapsedMilliseconds);
-            } catch (Exception anyException)
-            {
-                Console.WriteLine("Prefetch index building failed for {0}: {1}", string.Join(" ", args), anyException.Message);
-                Console.WriteLine(anyException.StackTrace);
-                Environment.Exit(1);
-            }
-        }
-
-        private void writeWebJson()
-        {
-			string webJsonPath = baseDir + System.IO.Path.DirectorySeparatorChar + "web.json";
+            string webJsonPath = baseDir + Path.DirectorySeparatorChar + "web-" + Guid.NewGuid() + ".json";
 			System.IO.File.WriteAllText(webJsonPath, serializer.Serialize(rootWebDict));
         }
 
@@ -574,10 +619,18 @@ namespace SpPrefetchIndexBuilder
             ClientContext clientContext = getClientContext(url);
             Web oWebsite = clientContext.Web;
             clientContext.Load(oWebsite, website => website.Webs);
-            clientContext.ExecuteQuery();
-
+            try 
+            {
+				clientContext.ExecuteQuery();
+			}
+			catch (Exception ex)
+			{
+				Console.WriteLine("Could not load site {0} because of Error {1}", url, ex.Message);
+				return;
+			}
             WebToFetch webToFetch = new WebToFetch();
             webToFetch.url = url;
+            webToFetch.isTopLevel = parentWebDict == null;
             webToFetch.webDict = new Dictionary<string, object>();
 
             foreach (Web orWebsite in oWebsite.Webs)
@@ -606,7 +659,7 @@ namespace SpPrefetchIndexBuilder
         }
 
 
-        private static void SetRoleAssignments(RoleAssignmentCollection roleAssignments, Dictionary<string, object> itemDict)
+        static void SetRoleAssignments(RoleAssignmentCollection roleAssignments, Dictionary<string, object> itemDict)
         {
             Dictionary<string, object> roleAssignmentsDict = new Dictionary<string, object>();
             foreach (RoleAssignment roleAssignment in roleAssignments)
@@ -629,7 +682,7 @@ namespace SpPrefetchIndexBuilder
         static public List<Dictionary<string, object>> IndexFolder(ClientContext clientContext, Folder folder)
         {
             List<Dictionary<string, object>> files = new List<Dictionary<string, object>>();
-            foreach (File file in folder.Files)
+            foreach (Microsoft.SharePoint.Client.File file in folder.Files)
             {
                 Dictionary<string, object> fileDict = new Dictionary<string, object>();
                 fileDict.Add("Title", file.Title);
@@ -685,6 +738,104 @@ namespace SpPrefetchIndexBuilder
                 }
             }
             return pwd;
+        }
+
+        public XmlDocument getContent(string siteUrl, String contentType, string contentId)
+        {
+			List<string> allSites = new List<string>();
+			var _url = string.Format("{0}/_vti_bin/SiteData.asmx", siteUrl);
+			var _action = "http://schemas.microsoft.com/sharepoint/soap/GetContent";
+
+			XmlDocument soapEnvelopeXml = CreateSoapEnvelope(contentType, contentId);
+			HttpWebRequest webRequest = CreateWebRequest(_url, _action);
+			InsertSoapEnvelopeIntoWebRequest(soapEnvelopeXml, webRequest);
+
+			// begin async call to web request.
+			IAsyncResult asyncResult = webRequest.BeginGetResponse(null, null);
+
+			// suspend this thread until call is complete. You might want to
+			// do something usefull here like update your UI.
+			asyncResult.AsyncWaitHandle.WaitOne();
+
+			// get the response from the completed web request.
+			XmlDocument contentDatabaseResult = new XmlDocument();
+			using (WebResponse webResponse = webRequest.EndGetResponse(asyncResult))
+			{
+				using (StreamReader rd = new StreamReader(webResponse.GetResponseStream()))
+				{
+					contentDatabaseResult.Load(rd);
+				}
+			}
+            return contentDatabaseResult;
+        }
+
+        public List<string> GetAllTopLevelSites()
+		{
+            List<String> allSites = new List<string>();
+            XmlDocument virtualServerGetContentResult = getContent(site, "VirtualServer", null);
+            XmlNode contentResultNode = virtualServerGetContentResult.SelectSingleNode("//*[local-name() = 'GetContentResult']");
+            if (contentResultNode == null || contentResultNode.InnerText == null)
+            {
+                throw new Exception(string.Format("Cannot list top level sites from {0}", site));
+            }
+            XmlDocument innerXmlDoc = new XmlDocument();
+            innerXmlDoc.LoadXml(contentResultNode.InnerText);
+            string contentDatabaseId = innerXmlDoc.SelectSingleNode("//*[local-name() = 'ContentDatabase']").Attributes["ID"].Value;
+			if (contentDatabaseId == null)
+			{
+				throw new Exception(string.Format("Cannot list top level sites from {0}", site));
+			}
+            XmlDocument contentDatabaseGetContentResult = getContent(site, "ContentDatabase", contentDatabaseId);
+			XmlNode contentDatabaseResultNode = contentDatabaseGetContentResult.SelectSingleNode("//*[local-name() = 'GetContentResult']");
+			if (contentDatabaseResultNode == null || contentDatabaseResultNode.InnerText == null)
+			{
+				throw new Exception(string.Format("Cannot list top level sites from {0}", site));
+			}
+			innerXmlDoc = new XmlDocument();
+			innerXmlDoc.LoadXml(contentDatabaseResultNode.InnerText);
+            XmlNodeList sites = innerXmlDoc.SelectNodes("//*[local-name() = 'Site']");
+            foreach (XmlNode siteNode in sites) 
+            {
+                allSites.Add(siteNode.Attributes["URL"].Value);
+            }
+            return allSites;
+		}
+
+		HttpWebRequest CreateWebRequest(string url, string action)
+		{
+			HttpWebRequest webRequest = (HttpWebRequest)WebRequest.Create(url);
+			webRequest.Headers.Add("SOAPAction", action);
+			webRequest.ContentType = "text/xml;charset=\"utf-8\"";
+			webRequest.Accept = "text/xml";
+			webRequest.Method = "POST";
+            webRequest.Credentials = cc;
+			return webRequest;
+		}
+
+		XmlDocument CreateSoapEnvelope(string objectType, string objectId)
+		{
+			XmlDocument soapEnvelopeDocument = new XmlDocument();
+            string soapEnv = @"<soapenv:Envelope xmlns:soapenv=""http://schemas.xmlsoap.org/soap/envelope/"" xmlns:soap=""http://schemas.microsoft.com/sharepoint/soap/"">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <soap:GetContent>
+         <soap:objectType>{0}</soap:objectType>
+{1}
+         <soap:retrieveChildItems>true</soap:retrieveChildItems>
+         <soap:securityOnly>false</soap:securityOnly>
+      </soap:GetContent>
+   </soapenv:Body>
+</soapenv:Envelope>";
+            soapEnvelopeDocument.LoadXml(string.Format(soapEnv, objectType, objectId == null ? "" : "<soap:objectId>" + objectId + "</soap:objectId>"));
+			return soapEnvelopeDocument;
+		}
+
+        void InsertSoapEnvelopeIntoWebRequest(XmlDocument soapEnvelopeXml, HttpWebRequest webRequest)
+        {
+            using (Stream stream = webRequest.GetRequestStream())
+            {
+                soapEnvelopeXml.Save(stream);
+            }
         }
     }
 }
