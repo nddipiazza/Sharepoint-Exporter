@@ -63,6 +63,7 @@ namespace SpPrefetchIndexBuilder
         public static bool excludeRoleDefinitions = false;
         public static bool excludeRoleAssignments = false;
         public static bool deleteExistingOutputDir = false;
+        public static bool doDownloadFiles = false;
         public static int maxFiles = -1;
         public int fileCount = 0;
 
@@ -114,12 +115,15 @@ namespace SpPrefetchIndexBuilder
 						);
 						spib.writeAllListsToJson();
 						Console.WriteLine("Lists metadata dump of {0} complete. Took {1} milliseconds.", spib.topParentSite, swLists.ElapsedMilliseconds);
-						Console.WriteLine("Downloading the files recieved during the index building");
-						Parallel.ForEach(
-							spib.fileDownloadList,
-							new ParallelOptions { MaxDegreeOfParallelism = numThreads },
-							toDownload => { spib.DownloadFile(toDownload); }
-						);
+                        if (doDownloadFiles)
+                        {
+							Console.WriteLine("Downloading the files recieved during the index building");
+							Parallel.ForEach(
+								spib.fileDownloadList,
+								new ParallelOptions { MaxDegreeOfParallelism = numThreads },
+								toDownload => { spib.DownloadFile(toDownload); }
+							);
+                        }
 					}
 				}
 				Console.WriteLine("Export complete. Took {0} milliseconds.", sw.ElapsedMilliseconds);
@@ -247,6 +251,10 @@ namespace SpPrefetchIndexBuilder
                 {
                     deleteExistingOutputDir = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
                 }
+				else if (arg.StartsWith("--downloadFiles="))
+				{
+					doDownloadFiles = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
+				}
                 else
                 {
                     help = true;
@@ -255,7 +263,7 @@ namespace SpPrefetchIndexBuilder
 
             if (help)
             {
-                Console.WriteLine("USAGE: SpPrefetchIndexBuilder.exe --siteUrl=siteUrl --outputDir=[outputDir] --domain=[domain] --username=[username] --password=[password (not recommended, do not specify to be prompted or use SP_PWD environment variable)] --numThreads=[optional number of threads to use while fetching] --maxFileSizeBytes=[optional maximum file size]");
+                Console.WriteLine("USAGE: SpPrefetchIndexBuilder.exe --siteUrl=siteUrl --outputDir=[outputDir] --domain=[domain] --username=[username] --password=[password (not recommended, do not specify to be prompted or use SP_PWD environment variable)] --numThreads=[optional number of threads to use while fetching] --maxFileSizeBytes=[optional maximum file size] --onlyWebs=[true if you want to only download web metadeta. default false] --maxFiles=[if > 0 will only download this many files before quitting. default -1] --excludeRoleAssignments=[if true will not store obtain role assignment metadata. default false] --excludeRoleDefinitions=[if true will not store obtain role definition metadata. default false] --downloadFiles=[Set this to false if you don't want to download the files from the sharepoint instance. default false]");
                 Environment.Exit(0);
             }
 
@@ -275,20 +283,25 @@ namespace SpPrefetchIndexBuilder
             }
             cc = new CredentialCache();
             NetworkCredential nc;
-            if (spPassword == null)
+            if (spPassword == null && spUsername != null)
             {
                 Console.WriteLine("Please enter password for {0}", spUsername);
                 nc = new NetworkCredential(spUsername, GetPassword(), spDomain);
             }
-            else
+            else if (spUsername != null)
             {
                 nc = new NetworkCredential(spUsername, spPassword, spDomain);
+            }
+            else
+            {
+                nc = System.Net.CredentialCache.DefaultNetworkCredentials;
             }
             cc.Add(new Uri(topParentSite), "NTLM", nc);
             HttpClientHandler handler = new HttpClientHandler();
             handler.Credentials = cc;
             client = new HttpClient(handler);
-            client.Timeout = TimeSpan.FromMinutes(4);
+            client.Timeout = TimeSpan.FromSeconds(30);
+            client.DefaultRequestHeaders.ConnectionClose = true;
         }
 
         public void DownloadFile(FileToDownload toDownload)
@@ -319,7 +332,7 @@ namespace SpPrefetchIndexBuilder
             }
             catch (Exception e)
             {
-                Console.WriteLine("Gave up trying to download url {0} to file {1} due to error: {2}", rootSite + toDownload.serverRelativeUrl, toDownload.saveToPath, e);
+                Console.WriteLine("Gave up trying to download url {0}{1} to file {2} due to error: {3}", rootSite, toDownload.serverRelativeUrl, toDownload.saveToPath, e);
             }
         }
 
