@@ -2,37 +2,6 @@
 
 This project will make an export of all of your sharepoint site. 
 
-## How to work on the Project
-
-Open the sln file in Visual Studio
-
-### Add the sharepoint client DLLs
-
-Download the Sharepoint Client Component SDK for the version of Sharepoint you are using:
-
-https://www.microsoft.com/en-us/download/confirmation.aspx?id=35585 - SharePoint Server 2013 Client Components SDK 
- 
-In Solution explorer, right click References -> Add reference -> Browse -> Add the following DLL's as listed in `%PROGRAMFILES%\SharePoint Client Components\redist.txt`
-
-```
-All files in:
-%ProgramFiles%\SharePoint Client Components\Assemblies
-%ProgramFiles%\SharePoint Client Components\Scripts
-
-The following files in %ProgramFiles%\Common Files\Microsoft Shared\Web Server Extensions\15\ISAPI:
-Microsoft.Office.Client.Education.dll
-Microsoft.Office.Client.Policy.dll
-Microsoft.Office.Client.TranslationServices.dll
-Microsoft.SharePoint.Client.dll
-Microsoft.SharePoint.Client.DocumentManagement.dll
-Microsoft.SharePoint.Client.Publishing.dll
-Microsoft.SharePoint.Client.Runtime.dll
-Microsoft.SharePoint.Client.Search.Applications.dll
-Microsoft.SharePoint.Client.Search.dll
-Microsoft.SharePoint.Client.Taxonomy.dll
-Microsoft.SharePoint.Client.UserProfiles.dll
-Microsoft.SharePoint.Client.WorkflowServices.dll
-```
 ## How to Run the program 
 
 `USAGE: SpPrefetchIndexBuilder.exe [siteUrl] [outputDir] [domain] [username] [password]`
@@ -106,23 +75,14 @@ Creates an output directory in the `outputDir` directory you specified in the cm
 
 # How to build on Linux
 
-* Install Mono. http://www.mono-project.com/download/#download-lin
+* Install packages `monodevelop mono-devel mono-complete monodevelop-versioncontrol` following instructions for your particular distro here: http://www.mono-project.com/download/#download-lin
 
-* Install MonoDevelop.
+Do not use the default packages from your OS' repository using `apt-get`. Make sure to get it using the mono-project.com repository as specified in the instructions.
 
-* Open the Solution file in Mono Develop.
+Does not work for mono version 4.x. Tested only on Mono JIT compiler version 5.10.1.4.
 
-* Copy the Sharepoint 2013 SDK DLLs into the `/path/to/Sharepoint-Exporter/SpCrawler` directory.
+* To make code changes in the monodevelop IDE, install it with: `flatpak install --user --from https://download.mono-project.com/repo/monodevelop.flatpakref` and run it with `/usr/bin/flatpak run --branch=stable --arch=x86_64 --command=monodevelop com.xamarin.MonoDevelop %F`
 
-* In solution view, Right click on Reference -> Edit References -> .NET Assembly -> Browse -> Import the DLLs you put in `/path/to/Sharepoint-Exporter/SpCrawler`
+* Build using: `build.sh`
 
-* Ctrl+F8 Select the "Release" drop down from the build configuration and Ctrl+F8 to build the project.
-
-* Now run this to build the Linux .bin file:
-
-```
-cd /path/to/Sharepoint-Exporter/SpCrawler/bin/Release
-mkbundle -o SpPrefetchIndexBuilder.bin /path/to/Sharepoint-Exporter/SpCrawler/bin/Release/SpPrefetchIndexBuilder.exe -L /usr/lib/mono/4.6.1-api -L /home/ndipiazza/lucidworks/Sharepoint-Exporter/SpCrawler
-```
-
-At this point, `/path/to/Sharepoint-Exporter/SpCrawler/bin/Release/SpPrefetchIndexBuilder.bin http://yoursphost /your/output/path domain username` will work just like it had worked for Windows.
+* The bundled binary is at `SpCrawler/bin/Release/SpFetcherBundled`
