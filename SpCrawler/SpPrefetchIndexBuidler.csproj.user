@@ -16,4 +16,8 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
     <StartArguments>http://172.16.11.15 c:\lucidworks\outdir winlab dev-admin</StartArguments>
   </PropertyGroup>
+  <PropertyGroup Condition=" '$(RunConfiguration)' == 'Default' ">
+    <StartAction>Project</StartAction>
+    <StartArguments>--siteUrl=http://172.16.11.133 --outputDir=/home/ndipiazza/Downloads/csomout --domain=winlab --username=dev-admin --password=D3v4dm!nistr@t0r --onlyWebs=true</StartArguments>
+  </PropertyGroup>
 </Project>
