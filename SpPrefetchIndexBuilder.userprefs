@@ -1,0 +1,34 @@
+﻿<Properties StartupConfiguration="{C56C6F36-E522-4D14-BF6E-F50F6F966D97}|Default" NuGet.AddPackagesDialog.IncludePrerelease="True">
+  <MonoDevelop.Ide.Workbench ActiveDocument="Sharepoint-Exporter Status">
+    <Files>
+      <File FileName="SpCrawler/SpPrefetchIndexBuilder.cs" Line="205" Column="18" />
+      <File FileName="SpCrawler/SharepointChanges.cs" Line="20" Column="49" />
+      <File FileName="Sharepoint-Exporter Status" />
+    </Files>
+    <Pads>
+      <Pad Id="ProjectPad">
+        <State name="__root__">
+          <Node name="SpPrefetchIndexBuilder" expanded="True" selected="True">
+            <Node name="SpPrefetchIndexBuidler" expanded="True">
+              <Node name="References" expanded="True" />
+              <Node name="Packages" expanded="True" />
+            </Node>
+          </Node>
+        </State>
+      </Pad>
+    </Pads>
+  </MonoDevelop.Ide.Workbench>
+  <MonoDevelop.Ide.Workspace ActiveConfiguration="Release" />
+  <MonoDevelop.Ide.ItemProperties.SpPrefetchIndexBuidler PreferredExecutionTarget="MonoDevelop.Default" />
+  <MonoDevelop.Ide.DebuggingService.Breakpoints>
+    <BreakpointStore>
+      <Breakpoint file="/home/ndipiazza/lucidworks/Sharepoint-Exporter/SpCrawler/SpPrefetchIndexBuilder.cs" relfile="SpCrawler/SpPrefetchIndexBuilder.cs" line="276" column="1" />
+      <Breakpoint file="/home/ndipiazza/lucidworks/Sharepoint-Exporter/SpCrawler/SpPrefetchIndexBuilder.cs" relfile="SpCrawler/SpPrefetchIndexBuilder.cs" line="310" column="1" />
+      <Breakpoint file="/home/ndipiazza/lucidworks/Sharepoint-Exporter/SpCrawler/SpPrefetchIndexBuilder.cs" relfile="SpCrawler/SpPrefetchIndexBuilder.cs" line="335" column="1" />
+      <Breakpoint file="/home/ndipiazza/lucidworks/Sharepoint-Exporter/SpCrawler/SpPrefetchIndexBuilder.cs" relfile="SpCrawler/SpPrefetchIndexBuilder.cs" line="348" column="1" />
+      <Breakpoint file="/home/ndipiazza/lucidworks/Sharepoint-Exporter/SpCrawler/SpPrefetchIndexBuilder.cs" relfile="SpCrawler/SpPrefetchIndexBuilder.cs" line="392" column="1" />
+    </BreakpointStore>
+  </MonoDevelop.Ide.DebuggingService.Breakpoints>
+  <MonoDevelop.Ide.DebuggingService.PinnedWatches />
+  <MultiItemStartupConfigurations />
+</Properties>
