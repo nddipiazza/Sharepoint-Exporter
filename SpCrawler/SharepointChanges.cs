@@ -9,7 +9,7 @@ namespace SpPrefetchIndexBuilder {
 
     // A change token is a delimited string with the following parts in the following order:
     // * Version number
-    // * A number indicating the change scope: 0 – Content Database, 1 – site collection, 2 – site, 3 – list.
+    // * A number indicating the change scope: 0 – Content Database, 1 – site collection, 2 – site (aka web), 3 – list.
     // * GUID representing the scope ID of the change token
     // * Time(in UTC) when the change occurred
     // * Number of the change relative to other changes
