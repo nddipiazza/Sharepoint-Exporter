@@ -430,7 +430,6 @@ namespace SpPrefetchIndexBuilder {
       if (webToFetch.siteCollectionUrl != null) {
         webDict.Add("SiteCollectionUrl", webToFetch.siteCollectionUrl);
       }
-      webDict.Add("IsSiteCollection", webToFetch.siteCollectionUrl);
       webDict.Add("UsersAndGroups", usersAndGroupsDict);
       Dictionary<string, object> listsDict = new Dictionary<string, object>();
       foreach (List list in lists) {
