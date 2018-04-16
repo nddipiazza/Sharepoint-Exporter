@@ -536,6 +536,7 @@ namespace SpPrefetchIndexBuilder {
                         item => item.Member.PrincipalType,
                         item => item.RoleDefinitionBindings));
             clientContext.ExecuteQuery();
+            Console.WriteLine("List Item {0} has unique role assignments: {1}", itemDict["Url"], listItem.RoleAssignments);
             SetRoleAssignments(listItem.RoleAssignments, itemDict);
           }
           itemDict.Add("FieldValues", listItem.FieldValues);
@@ -573,6 +574,7 @@ namespace SpPrefetchIndexBuilder {
                   item => item.RoleDefinitionBindings
           ));
           clientContext.ExecuteQuery();
+          Console.WriteLine("List {0} has unique role assignments: {1}", listDict["Url"], list.RoleAssignments);
           SetRoleAssignments(list.RoleAssignments, listDict);
         }
         if (listToFetch.listsDict.ContainsKey(list.Id.ToString())) {
