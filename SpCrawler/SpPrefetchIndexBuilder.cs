@@ -14,9 +14,9 @@ using System.IO;
 namespace SpPrefetchIndexBuilder {
   class WebToFetch {
     public String url;
-    public String siteCollectionUrl;
+    public String rootLevelSiteUrl;
     public Dictionary<string, object> webDict;
-    public bool isSiteCollection;
+    public bool isRootLevelSite;
   }
 
   class ListToFetch {
@@ -56,7 +56,7 @@ namespace SpPrefetchIndexBuilder {
 
     public string defaultSite = "http://localhost/";
     public CredentialCache cc = null;
-    public string topSiteCollection;
+    public string rootLevelSiteUrl;
     public JavaScriptSerializer serializer = new JavaScriptSerializer();
     public int maxFileSizeBytes = -1;
     public int fileCount = 0;
@@ -83,7 +83,7 @@ namespace SpPrefetchIndexBuilder {
         Stopwatch sw = Stopwatch.StartNew();
         SpPrefetchIndexBuilder spib = new SpPrefetchIndexBuilder(args);
 
-        rootSite = spib.topSiteCollection;
+        rootSite = spib.rootLevelSiteUrl;
 
         List<string> siteCollections = spib.GetAllSiteCollections();
 
@@ -93,21 +93,21 @@ namespace SpPrefetchIndexBuilder {
 
         foreach (String nextSiteCollection in siteCollections) {
           spib = new SpPrefetchIndexBuilder(args);
-          spib.topSiteCollection = nextSiteCollection;
+          spib.rootLevelSiteUrl = nextSiteCollection;
 
-          if (spib.topSiteCollection.Contains("://sitemaster-")) {
+          if (spib.rootLevelSiteUrl.Contains("://sitemaster-")) {
             continue;
           }
 
           Stopwatch swWeb = Stopwatch.StartNew();
-          spib.getSubWebs(spib.topSiteCollection, spib.topSiteCollection, null);
+          spib.getSubWebs(spib.rootLevelSiteUrl, spib.rootLevelSiteUrl, null);
           Parallel.ForEach(
             spib.webFetchList,
             new ParallelOptions { MaxDegreeOfParallelism = numThreads },
             toFetchWeb => { spib.FetchWeb(toFetchWeb); }
           );
           spib.writeWebJson();
-          Console.WriteLine("Web fetch of {0} complete. Took {1} milliseconds.", spib.topSiteCollection, swWeb.ElapsedMilliseconds);
+          Console.WriteLine("Web fetch of {0} complete. Took {1} milliseconds.", spib.rootLevelSiteUrl, swWeb.ElapsedMilliseconds);
 
           if (!onlyWebs) {
             Stopwatch swLists = Stopwatch.StartNew();
@@ -118,7 +118,7 @@ namespace SpPrefetchIndexBuilder {
             );
             spib.writeAllListsToJson();
             Console.WriteLine("Lists metadata dump of {0} complete. Took {1} milliseconds.", 
-                              spib.topSiteCollection, swLists.ElapsedMilliseconds);
+                              spib.rootLevelSiteUrl, swLists.ElapsedMilliseconds);
             if (doDownloadFiles) {
               Console.WriteLine("Downloading the files recieved during the index building");
               Parallel.ForEach(
@@ -190,7 +190,7 @@ namespace SpPrefetchIndexBuilder {
       }
       serializer.MaxJsonLength = 1677721600;
 
-      topSiteCollection = defaultSite;
+      rootLevelSiteUrl = defaultSite;
 
       bool help = false;
 
@@ -208,7 +208,7 @@ namespace SpPrefetchIndexBuilder {
         } else if (arg.StartsWith("--incrementalFile=")) {
           incrementalFilePath = arg.Split(new Char[] { '=' })[1];
         } else if (arg.StartsWith("--siteUrl=")) {
-          topSiteCollection = arg.Split(new Char[] { '=' })[1];
+          rootLevelSiteUrl = arg.Split(new Char[] { '=' })[1];
         } else if (arg.StartsWith("--outputDir=")) {
           baseDir = arg.Split(new Char[] { '=' })[1];
           customBaseDir = true;
@@ -273,8 +273,8 @@ namespace SpPrefetchIndexBuilder {
         Directory.CreateDirectory(baseDir + Path.DirectorySeparatorChar + "lists");
         Directory.CreateDirectory(baseDir + Path.DirectorySeparatorChar + "files");
       }
-      if (topSiteCollection.EndsWith("/")) {
-        topSiteCollection = topSiteCollection.Substring(0, topSiteCollection.Length - 1);
+      if (rootLevelSiteUrl.EndsWith("/")) {
+        rootLevelSiteUrl = rootLevelSiteUrl.Substring(0, rootLevelSiteUrl.Length - 1);
       }
       cc = new CredentialCache();
       NetworkCredential nc;
@@ -286,7 +286,7 @@ namespace SpPrefetchIndexBuilder {
       } else {
         nc = CredentialCache.DefaultNetworkCredentials;
       }
-      cc.Add(new Uri(topSiteCollection), "NTLM", nc);
+      cc.Add(new Uri(rootLevelSiteUrl), "NTLM", nc);
       HttpClientHandler handler = new HttpClientHandler();
       handler.Credentials = cc;
       client = new HttpClient(handler);
@@ -396,7 +396,7 @@ namespace SpPrefetchIndexBuilder {
       clientContext.ExecuteQuery();
 
       Dictionary<string, object> usersAndGroupsDict = new Dictionary<string, object>();
-      if (webToFetch.isSiteCollection) {
+      if (webToFetch.isRootLevelSite) {
         foreach (Group group in groups) {
           Dictionary<string, object> groupDict = new Dictionary<string, object>();
           groupDict.Add("Id", "" + group.Id);
@@ -426,9 +426,9 @@ namespace SpPrefetchIndexBuilder {
           usersAndGroupsDict.Add(user.LoginName, userDict);
         }
       }
-      webDict.Add("IsSiteCollection", webToFetch.isSiteCollection);
-      if (webToFetch.siteCollectionUrl != null) {
-        webDict.Add("SiteCollectionUrl", webToFetch.siteCollectionUrl);
+      webDict.Add("IsRootLevelSite", webToFetch.isRootLevelSite);
+      if (webToFetch.rootLevelSiteUrl != null) {
+        webDict.Add("RootLevelSiteUrl", webToFetch.rootLevelSiteUrl);
       }
       webDict.Add("UsersAndGroups", usersAndGroupsDict);
       Dictionary<string, object> listsDict = new Dictionary<string, object>();
@@ -625,7 +625,7 @@ namespace SpPrefetchIndexBuilder {
       }
     }
 
-    public void getSubWebs(string url, string siteCollectionUrl, Dictionary<string, object> parentWebDict) {
+    public void getSubWebs(string url, string rootLevelSiteUrl, Dictionary<string, object> parentWebDict) {
       CheckAbort();
       ClientContext clientContext = getClientContext(url);
       Web oWebsite = clientContext.Web;
@@ -639,13 +639,13 @@ namespace SpPrefetchIndexBuilder {
       WebToFetch webToFetch = new WebToFetch();
       webToFetch.url = url;
       if (parentWebDict != null) {
-        webToFetch.siteCollectionUrl = siteCollectionUrl;
+        webToFetch.rootLevelSiteUrl = rootLevelSiteUrl;
       }
-      webToFetch.isSiteCollection = parentWebDict == null;
+      webToFetch.isRootLevelSite = parentWebDict == null;
       webToFetch.webDict = new Dictionary<string, object>();
 
       foreach (Web orWebsite in oWebsite.Webs) {
-        getSubWebs(orWebsite.Url, siteCollectionUrl, webToFetch.webDict);
+        getSubWebs(orWebsite.Url, rootLevelSiteUrl, webToFetch.webDict);
       }
       if (parentWebDict != null) {
         Dictionary<string, object> subWebsDict = null;
