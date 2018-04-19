@@ -432,6 +432,9 @@ namespace SpPrefetchIndexBuilder {
           groupDict.Add("Id", "" + group.Id);
           groupDict.Add("LoginName", group.LoginName);
           groupDict.Add("PrincipalType", group.PrincipalType.ToString());
+          if (group.PrincipalType.Equals("SecurityGroup")) {
+            groupDict.Add("Dn", findByIdentitySid(group.LoginName));
+          }
           groupDict.Add("Title", group.Title);
           Dictionary<string, object> innerUsersDict = new Dictionary<string, object>();
           foreach (User user in group.Users) {
@@ -439,6 +442,9 @@ namespace SpPrefetchIndexBuilder {
             innerUserDict.Add("LoginName", user.LoginName);
             innerUserDict.Add("Id", "" + user.Id);
             innerUserDict.Add("PrincipalType", user.PrincipalType.ToString());
+            if (user.PrincipalType.Equals("SecurityGroup")) {
+              innerUserDict.Add("Dn", findByIdentitySid(user.LoginName));
+            }
             innerUserDict.Add("IsSiteAdmin", "" + user.IsSiteAdmin);
             innerUserDict.Add("Title", user.Title);
             innerUsersDict.Add(user.LoginName, innerUserDict);
