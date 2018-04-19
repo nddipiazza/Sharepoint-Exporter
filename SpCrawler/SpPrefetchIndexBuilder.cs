@@ -373,6 +373,7 @@ namespace SpPrefetchIndexBuilder {
                     item => item.PrincipalId,
                     item => item.Member.LoginName,
                     item => item.Member.Title,
+                    item => item.PrincipalId,
                     item => item.Member.PrincipalType,
                     item => item.RoleDefinitionBindings
                 ));
@@ -675,6 +676,7 @@ namespace SpPrefetchIndexBuilder {
         roleAssignmentDict.Add("Title", roleAssignment.Member.Title);
         roleAssignmentDict.Add("PrincipalType", roleAssignment.Member.PrincipalType.ToString());
         roleAssignmentDict.Add("RoleDefinitionIds", defs);
+        roleAssignmentDict.Add("PrincipalId", roleAssignment.PrincipalId);
         roleAssignmentsDict.Add(roleAssignment.Member.LoginName, roleAssignmentDict);
       }
       itemDict.Add("RoleAssignments", roleAssignmentsDict);
