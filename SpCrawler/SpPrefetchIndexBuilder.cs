@@ -677,7 +677,12 @@ namespace SpPrefetchIndexBuilder {
         roleAssignmentDict.Add("PrincipalType", roleAssignment.Member.PrincipalType.ToString());
         roleAssignmentDict.Add("RoleDefinitionIds", defs);
         roleAssignmentDict.Add("PrincipalId", roleAssignment.PrincipalId);
-        roleAssignmentsDict.Add(roleAssignment.Member.LoginName, roleAssignmentDict);
+        if (roleAssignment.Member.PrincipalType.Equals(Microsoft.SharePoint.Client.Utilities.PrincipalType.SecurityGroup) || 
+            roleAssignment.Member.PrincipalType.Equals(Microsoft.SharePoint.Client.Utilities.PrincipalType.DistributionList)) {
+          roleAssignmentsDict.Add(roleAssignment.Member.Title, roleAssignmentDict);  // Store these as domain\username
+        } else {
+          roleAssignmentsDict.Add(roleAssignment.Member.LoginName, roleAssignmentDict); // Use the normal LoginName for these
+        }
       }
       itemDict.Add("RoleAssignments", roleAssignmentsDict);
     }
