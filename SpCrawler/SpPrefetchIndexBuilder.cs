@@ -4,13 +4,12 @@ using System.Diagnostics;
 using System.Security;
 using System.Collections.Generic;
 using System.Web.Script.Serialization;
+using Microsoft.SharePoint.Client;
 using System.Threading.Tasks;
 using System.Threading;
 using System.Net.Http;
-using System.DirectoryServices;
 using System.Xml;
 using System.IO;
-using Microsoft.SharePoint.Client;
 
 namespace SpPrefetchIndexBuilder {
   class WebToFetch {
@@ -57,11 +56,6 @@ namespace SpPrefetchIndexBuilder {
 
     public string defaultSite = "http://localhost/";
     public CredentialCache cc = null;
-    string ldapHost;
-    int ldapPort;
-    string username;
-    string password;
-    string domain;
     public string rootLevelSiteUrl;
     public JavaScriptSerializer serializer = new JavaScriptSerializer();
     public int maxFileSizeBytes = -1;
@@ -74,23 +68,9 @@ namespace SpPrefetchIndexBuilder {
 
     public List<string> ignoreListNames = new List<string>();
 
-    public string findByIdentitySid(String loginName) {
-      string sid = loginName.Replace("c:0+.w|", "");
-      using (var user = new DirectoryEntry(string.Format("LDAP://{0}:{1}/<SID={2}>", ldapHost, ldapPort, sid), 
-                                           string.Format("{0}\\{1}", domain, username),
-                                           password, AuthenticationTypes.None)) {
-        using (var dSearch = new DirectorySearcher(user)) {
-          dSearch.PageSize = 1;
-          dSearch.ReferralChasing = ReferralChasingOption.All;
-          dSearch.PropertiesToLoad.Add("distinguishedName");
-          SearchResult result = dSearch.FindOne();
-          return (string)result.Properties["distinguishedname"][0];
-        }
-      }
-    }
-
     static void Main(string[] args) {
       SpPrefetchIndexBuilder spib = new SpPrefetchIndexBuilder(args);
+
       if (incrementalFile == null) {
         buildFullIndex(args);
       } else {
@@ -236,10 +216,6 @@ namespace SpPrefetchIndexBuilder {
           spDomain = arg.Split(new Char[] { '=' })[1];
         } else if (arg.StartsWith("--username=")) {
           spUsername = arg.Split(new Char[] { '=' })[1];
-        } else if (arg.StartsWith("--ldapHost=")) {
-          ldapHost = arg.Split(new Char[] { '=' })[1];
-        } else if (arg.StartsWith("--ldapPort=")) {
-          ldapPort = int.Parse(arg.Split(new Char[] { '=' })[1]);
         } else if (arg.StartsWith("--password=")) {
           spPassword = arg.Split(new Char[] { '=' })[1];
         } else if (arg.StartsWith("--numThreads=")) {
@@ -265,9 +241,7 @@ namespace SpPrefetchIndexBuilder {
 
       if (help) {
         Console.WriteLine("USAGE: SpPrefetchIndexBuilder.exe " +
-                          "--siteUrl=[siteUrl] " +
-                          "--ldapHost=[ldapHost] " + 
-                          "--ldapPort=[ldapPort] " +
+                          "--siteUrl=siteUrl " +
                           "--incrementalFile=[path to incremental file] " +
                           "--outputDir=[outputDir] " +
                           "--domain=[domain] " +
@@ -313,9 +287,6 @@ namespace SpPrefetchIndexBuilder {
         nc = CredentialCache.DefaultNetworkCredentials;
       }
       cc.Add(new Uri(rootLevelSiteUrl), "NTLM", nc);
-      username = spUsername;
-      password = spPassword;
-      domain = spDomain;
       HttpClientHandler handler = new HttpClientHandler();
       handler.Credentials = cc;
       client = new HttpClient(handler);
@@ -452,9 +423,6 @@ namespace SpPrefetchIndexBuilder {
           userDict.Add("Id", "" + user.Id);
           userDict.Add("PrincipalType", user.PrincipalType.ToString());
           userDict.Add("IsSiteAdmin", "" + user.IsSiteAdmin);
-          if (user.PrincipalType.Equals("SecurityGroup")) {
-            userDict.Add("Dn", findByIdentitySid(user.LoginName));
-          }
           userDict.Add("Title", user.Title);
           usersAndGroupsDict.Add(user.LoginName, userDict);
         }
