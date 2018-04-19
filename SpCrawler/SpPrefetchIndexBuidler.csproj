@@ -95,6 +95,7 @@
     <Reference Include="Microsoft.SharePoint.Client.WorkflowServices">
       <HintPath>..\packages\Microsoft.SharePoint2013.CSOM.15.0.4711.1000\lib\net45\Microsoft.SharePoint.Client.WorkflowServices.dll</HintPath>
     </Reference>
+    <Reference Include="System.DirectoryServices" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="SpPrefetchIndexBuilder.cs" />
