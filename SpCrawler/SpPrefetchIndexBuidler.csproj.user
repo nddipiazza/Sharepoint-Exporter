@@ -18,6 +18,9 @@
   </PropertyGroup>
   <PropertyGroup Condition=" '$(RunConfiguration)' == 'Default' ">
     <StartAction>Project</StartAction>
-    <StartArguments>--siteUrl=http://172.16.11.133 --outputDir=/home/ndipiazza/Downloads/csomout --domain=winlab --username=dev-admin --password=D3v4dm!nistr@t0r --onlyWebs=true</StartArguments>
+    <StartArguments>--siteUrl=http://35.173.186.101/nickland/funtimes --domain=dastest --username=robert --password=Lucid123 --outputDir=/home/ndipiazza/Downloads/csomout --downloadFiles=false</StartArguments>
+    <EnvironmentVariables>
+      <Variable name="MONO_REGISTRY_PATH" value="/home/ndipiazza/lucidworks/Sharepoint-Exporter-2010/registry" />
+    </EnvironmentVariables>
   </PropertyGroup>
 </Project>

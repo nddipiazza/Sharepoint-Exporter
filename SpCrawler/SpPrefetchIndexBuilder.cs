@@ -78,14 +78,16 @@ namespace SpPrefetchIndexBuilder {
       }
     }
 
-    public static void buildFullIndex(String [] args) {
+    public static void buildFullIndex(String[] args) {
       try {
         Stopwatch sw = Stopwatch.StartNew();
         SpPrefetchIndexBuilder spib = new SpPrefetchIndexBuilder(args);
 
         rootSite = spib.topSiteCollection;
 
-        List<string> siteCollections = spib.GetAllSiteCollections();
+        //List<string> siteCollections = spib.GetAllSiteCollections();
+        List<string> siteCollections = new List<string>();
+        siteCollections.Add(rootSite);
 
         ServicePointManager.DefaultConnectionLimit = SpPrefetchIndexBuilder.numThreads;
 
@@ -117,7 +119,7 @@ namespace SpPrefetchIndexBuilder {
               toFetchList => { spib.FetchList(toFetchList); }
             );
             spib.writeAllListsToJson();
-            Console.WriteLine("Lists metadata dump of {0} complete. Took {1} milliseconds.", 
+            Console.WriteLine("Lists metadata dump of {0} complete. Took {1} milliseconds.",
                               spib.topSiteCollection, swLists.ElapsedMilliseconds);
             if (doDownloadFiles) {
               Console.WriteLine("Downloading the files recieved during the index building");
@@ -138,7 +140,7 @@ namespace SpPrefetchIndexBuilder {
 
     public static void buildIncrementalIndex(SpPrefetchIndexBuilder spib) {
       String incrementalJson = incrementalFile.OpenText().ReadToEnd();
-      Dictionary<string, object> incrementalDict = 
+      Dictionary<string, object> incrementalDict =
         (new JavaScriptSerializer().DeserializeObject(incrementalJson) as Dictionary<string, object>);
 
     }
@@ -282,7 +284,11 @@ namespace SpPrefetchIndexBuilder {
         Console.WriteLine("Please enter password for {0}", spUsername);
         nc = new NetworkCredential(spUsername, GetPassword(), spDomain);
       } else if (spUsername != null) {
-        nc = new NetworkCredential(spUsername, spPassword, spDomain);
+        if (spDomain != null) {
+          nc = new NetworkCredential(spUsername, spPassword, spDomain);
+        } else {
+          nc = new NetworkCredential(spUsername, spPassword);
+        }
       } else {
         nc = CredentialCache.DefaultNetworkCredentials;
       }
@@ -296,7 +302,7 @@ namespace SpPrefetchIndexBuilder {
 
     public void DownloadFile(FileToDownload toDownload) {
       if (maxFiles > 0 && fileCount++ >= maxFiles) {
-        Console.WriteLine("Not downloading file {0} because maxFiles limit of {1} has been reached.", 
+        Console.WriteLine("Not downloading file {0} because maxFiles limit of {1} has been reached.",
                           toDownload.serverRelativeUrl, maxFiles);
         return;
       }
@@ -308,14 +314,14 @@ namespace SpPrefetchIndexBuilder {
               memStream.CopyTo(fileStream);
             }
           }
-          Console.WriteLine("Thread {0} - Successfully downloaded {1} to {2}", Thread.CurrentThread.ManagedThreadId, 
+          Console.WriteLine("Thread {0} - Successfully downloaded {1} to {2}", Thread.CurrentThread.ManagedThreadId,
                             toDownload.serverRelativeUrl, toDownload.saveToPath);
         } else {
-          Console.WriteLine("Got non-OK status {0} when trying to download url {1}", responseResult.Result.StatusCode, 
+          Console.WriteLine("Got non-OK status {0} when trying to download url {1}", responseResult.Result.StatusCode,
                             rootSite + toDownload.serverRelativeUrl);
         }
       } catch (Exception e) {
-        Console.WriteLine("Gave up trying to download url {0}{1} to file {2} due to error: {3}", rootSite, 
+        Console.WriteLine("Gave up trying to download url {0}{1} to file {2} due to error: {3}", rootSite,
                           toDownload.serverRelativeUrl, toDownload.saveToPath, e);
       }
     }
@@ -331,12 +337,12 @@ namespace SpPrefetchIndexBuilder {
 
       var site = clientContext.Site;
       if (excludeRoleDefinitions && excludeRoleDefinitions) {
-        clientContext.Load(web, website => website.Webs, website => website.Title, website => website.Url, 
+        clientContext.Load(web, website => website.Webs, website => website.Title, website => website.ServerRelativeUrl,
                            website => website.Description, website => website.Id, website => website.LastItemModifiedDate);
       } else {
-        clientContext.Load(web, website => website.Webs, website => website.Title, website => website.Url, 
-                           website => website.RoleDefinitions, website => website.RoleAssignments, 
-                           website => website.HasUniqueRoleAssignments, website => website.Description, website => website.Id, 
+        clientContext.Load(web, website => website.Webs, website => website.Title, website => website.ServerRelativeUrl,
+                           website => website.RoleDefinitions, website => website.RoleAssignments,
+                           website => website.HasUniqueRoleAssignments, website => website.Description, website => website.Id,
                            website => website.LastItemModifiedDate);
       }
       try {
@@ -358,8 +364,8 @@ namespace SpPrefetchIndexBuilder {
       if (!onlyWebs) {
         webDict.Add("ListsFileName", listsFileName);
       }
+      Dictionary<string, Dictionary<string, object>> roleDefsDict = new Dictionary<string, Dictionary<string, object>>();
       if (!excludeRoleAssignments && web.HasUniqueRoleAssignments) {
-        Dictionary<string, Dictionary<string, object>> roleDefsDict = new Dictionary<string, Dictionary<string, object>>();
         foreach (RoleDefinition roleDefition in web.RoleDefinitions) {
           Dictionary<string, object> roleDefDict = new Dictionary<string, object>();
           roleDefDict.Add("Id", roleDefition.Id);
@@ -370,29 +376,27 @@ namespace SpPrefetchIndexBuilder {
         webDict.Add("RoleDefinitions", roleDefsDict);
         clientContext.Load(web.RoleAssignments,
             roleAssignment => roleAssignment.Include(
-                    item => item.PrincipalId,
-                    item => item.Member.LoginName,
-                    item => item.Member.Title,
-                    item => item.Member.PrincipalType,
-                    item => item.RoleDefinitionBindings
-                ));
+                             item => item.Member.Id,
+                             item => item.Member.LoginName,
+                             item => item.Member.Title,
+                             item => item.Member.PrincipalType,
+                             item => item.RoleDefinitionBindings
+        ));
         clientContext.ExecuteQuery();
-        SetRoleAssignments(web.RoleAssignments, webDict);
+        SetRoleAssignments(clientContext, web.RoleAssignments, webDict);
       }
 
       ListCollection lists = web.Lists;
       GroupCollection groups = web.SiteGroups;
-      UserCollection users = web.SiteUsers;
+      List users = web.SiteUserInfoList;
       clientContext.Load(lists);
       clientContext.Load(groups,
-          grp => grp.Include(
-              item => item.Users,
-              item => item.Id,
-              item => item.LoginName,
-              item => item.PrincipalType,
-              item => item.Title
+          grp => grp.Include(item => item.Users,
+                             item => item.Id,
+                             item => item.LoginName,
+                             item => item.PrincipalType,
+                             item => item.Title
           ));
-      clientContext.Load(users);
       clientContext.ExecuteQuery();
 
       Dictionary<string, object> usersAndGroupsDict = new Dictionary<string, object>();
@@ -408,29 +412,24 @@ namespace SpPrefetchIndexBuilder {
             Dictionary<string, object> innerUserDict = new Dictionary<string, object>();
             innerUserDict.Add("LoginName", user.LoginName);
             innerUserDict.Add("Id", "" + user.Id);
+            var userItem = clientContext.Web.SiteUserInfoList.GetItemById(user.Id);
+            clientContext.Load(userItem.FieldValuesAsText);
+            clientContext.ExecuteQuery();
+
+            innerUserDict.Add("IsSiteAdmin", "Yes".Equals(userItem.FieldValuesAsText["IsSiteAdmin"]));
             innerUserDict.Add("PrincipalType", user.PrincipalType.ToString());
-            innerUserDict.Add("IsSiteAdmin", "" + user.IsSiteAdmin);
             innerUserDict.Add("Title", user.Title);
             innerUsersDict.Add(user.LoginName, innerUserDict);
           }
           groupDict.Add("Users", innerUsersDict);
           usersAndGroupsDict.Add(group.LoginName, groupDict);
         }
-        foreach (User user in users) {
-          Dictionary<string, object> userDict = new Dictionary<string, object>();
-          userDict.Add("LoginName", user.LoginName);
-          userDict.Add("Id", "" + user.Id);
-          userDict.Add("PrincipalType", user.PrincipalType.ToString());
-          userDict.Add("IsSiteAdmin", "" + user.IsSiteAdmin);
-          userDict.Add("Title", user.Title);
-          usersAndGroupsDict.Add(user.LoginName, userDict);
-        }
+        webDict.Add("UsersAndGroups", usersAndGroupsDict);
       }
       webDict.Add("IsSiteCollection", webToFetch.isSiteCollection);
       if (webToFetch.siteCollectionUrl != null) {
         webDict.Add("SiteCollectionUrl", webToFetch.siteCollectionUrl);
       }
-      webDict.Add("UsersAndGroups", usersAndGroupsDict);
       Dictionary<string, object> listsDict = new Dictionary<string, object>();
       foreach (List list in lists) {
         // All sites have a few lists that we don't care about exporting. Exclude these.
@@ -456,12 +455,12 @@ namespace SpPrefetchIndexBuilder {
         DateTime now = DateTime.Now;
         ClientContext clientContext = getClientContext(listToFetch.site);
         List list = clientContext.Web.Lists.GetById(listToFetch.listId);
-        clientContext.Load(list, lslist => lslist.HasUniqueRoleAssignments, lslist => lslist.Id, 
+        clientContext.Load(list, lslist => lslist.HasUniqueRoleAssignments, lslist => lslist.Id,
                            lslist => lslist.Title, lslist => lslist.BaseType,
-            lslist => lslist.Description, lslist => lslist.LastItemModifiedDate, lslist => lslist.RootFolder, 
+            lslist => lslist.Description, lslist => lslist.LastItemModifiedDate, lslist => lslist.RootFolder,
                            lslist => lslist.DefaultDisplayFormUrl);
         clientContext.ExecuteQuery();
-        Console.WriteLine("Thread {0} - Parsing list site={1}, listID={2}, listTitle={3}", Thread.CurrentThread.ManagedThreadId, 
+        Console.WriteLine("Thread {0} - Parsing list site={1}, listID={2}, listTitle={3}", Thread.CurrentThread.ManagedThreadId,
                           listToFetch.site, list.Id, list.Title);
         CamlQuery camlQuery = new CamlQuery();
         camlQuery.ViewXml = "<View Scope=\"RecursiveAll\"></View>";
@@ -472,7 +471,6 @@ namespace SpPrefetchIndexBuilder {
                 item => item.Id,
                 item => item.DisplayName,
                 item => item.HasUniqueRoleAssignments,
-                item => item.Folder,
                 item => item.File,
                 item => item.ContentType
                 ));
@@ -512,9 +510,9 @@ namespace SpPrefetchIndexBuilder {
           if (listItem.File.ServerObjectIsNull == false) {
             itemDict.Add("TimeLastModified", listItem.File.TimeLastModified.ToString());
             itemDict.Add("ListItemType", "List_Item");
-            if (maxFileSizeBytes < 0 || listItem.FieldValues.ContainsKey("File_x0020_Size") == false || 
+            if (maxFileSizeBytes < 0 || listItem.FieldValues.ContainsKey("File_x0020_Size") == false ||
                 int.Parse((string)listItem.FieldValues["File_x0020_Size"]) < maxFileSizeBytes) {
-              string filePath = baseDir + Path.DirectorySeparatorChar + "files" + Path.DirectorySeparatorChar + 
+              string filePath = baseDir + Path.DirectorySeparatorChar + "files" + Path.DirectorySeparatorChar +
                                               Guid.NewGuid().ToString() + Path.GetExtension(listItem.File.Name);
               FileToDownload toDownload = new FileToDownload();
               toDownload.saveToPath = filePath;
@@ -522,43 +520,22 @@ namespace SpPrefetchIndexBuilder {
               fileDownloadList.Add(toDownload);
               itemDict.Add("ExportPath", filePath);
             }
-          } else if (listItem.Folder.ServerObjectIsNull == false) {
-            itemDict.Add("ListItemType", "Folder");
           } else {
             itemDict.Add("ListItemType", "List_Item");
           }
           if (listItem.HasUniqueRoleAssignments) {
             clientContext.Load(listItem.RoleAssignments,
                 ras => ras.Include(
-                        item => item.PrincipalId,
-                        item => item.Member.LoginName,
-                        item => item.Member.Title,
-                        item => item.Member.PrincipalType,
-                        item => item.RoleDefinitionBindings));
+                                 item => item.Member.Id,
+                                 item => item.Member.LoginName,
+                                 item => item.Member.Title,
+                                 item => item.Member.PrincipalType,
+                                 item => item.RoleDefinitionBindings));
             clientContext.ExecuteQuery();
             Console.WriteLine("List Item {0} has unique role assignments: {1}", itemDict["Url"], listItem.RoleAssignments);
-            SetRoleAssignments(listItem.RoleAssignments, itemDict);
+            SetRoleAssignments(clientContext, listItem.RoleAssignments, itemDict);
           }
           itemDict.Add("FieldValues", listItem.FieldValues);
-          if (listItem.FieldValues.ContainsKey("Attachments") && (bool)listItem.FieldValues["Attachments"]) {
-            clientContext.Load(listItem.AttachmentFiles);
-            clientContext.ExecuteQuery();
-            List<Dictionary<string, object>> attachmentFileList = new List<Dictionary<string, object>>();
-            foreach (Attachment attachmentFile in listItem.AttachmentFiles) {
-              Dictionary<string, object> attachmentFileDict = new Dictionary<string, object>();
-              attachmentFileDict.Add("Url", rootSite + attachmentFile.ServerRelativeUrl);
-              string filePath = baseDir + Path.DirectorySeparatorChar + "files" + Path.DirectorySeparatorChar + 
-                                              Guid.NewGuid().ToString() + Path.GetExtension(attachmentFile.FileName);
-              FileToDownload toDownload = new FileToDownload();
-              toDownload.saveToPath = filePath;
-              toDownload.serverRelativeUrl = attachmentFile.ServerRelativeUrl;
-              fileDownloadList.Add(toDownload);
-              attachmentFileDict.Add("ExportPath", filePath);
-              attachmentFileDict.Add("FileName", attachmentFile.FileName);
-              attachmentFileList.Add(attachmentFileDict);
-            }
-            itemDict.Add("AttachmentFiles", attachmentFileList);
-          }
           itemsList.Add(itemDict);
         }
         listDict.Add("Items", itemsList);
@@ -567,15 +544,15 @@ namespace SpPrefetchIndexBuilder {
         if (list.HasUniqueRoleAssignments) {
           clientContext.Load(list.RoleAssignments,
           roleAssignments => roleAssignments.Include(
-                  item => item.PrincipalId,
-                  item => item.Member.LoginName,
-                  item => item.Member.Title,
-                  item => item.Member.PrincipalType,
-                  item => item.RoleDefinitionBindings
+                               item => item.Member.Id,
+                               item => item.Member.LoginName,
+                               item => item.Member.Title,
+                               item => item.Member.PrincipalType,
+                               item => item.RoleDefinitionBindings
           ));
           clientContext.ExecuteQuery();
           Console.WriteLine("List {0} has unique role assignments: {1}", listDict["Url"], list.RoleAssignments);
-          SetRoleAssignments(list.RoleAssignments, listDict);
+          SetRoleAssignments(clientContext, list.RoleAssignments, listDict);
         }
         if (listToFetch.listsDict.ContainsKey(list.Id.ToString())) {
           Console.WriteLine("Duplicate key " + list.Id);
@@ -645,7 +622,8 @@ namespace SpPrefetchIndexBuilder {
       webToFetch.webDict = new Dictionary<string, object>();
 
       foreach (Web orWebsite in oWebsite.Webs) {
-        getSubWebs(orWebsite.Url, siteCollectionUrl, webToFetch.webDict);
+        string subSiteUrl = new Uri(siteCollectionUrl).Scheme + "://" + new Uri(siteCollectionUrl).Host + orWebsite.ServerRelativeUrl;
+        getSubWebs(subSiteUrl, siteCollectionUrl, webToFetch.webDict);
       }
       if (parentWebDict != null) {
         Dictionary<string, object> subWebsDict = null;
@@ -663,7 +641,7 @@ namespace SpPrefetchIndexBuilder {
     }
 
 
-    static void SetRoleAssignments(RoleAssignmentCollection roleAssignments, Dictionary<string, object> itemDict) {
+    static void SetRoleAssignments(ClientContext clientContext, RoleAssignmentCollection roleAssignments, Dictionary<string, object> itemDict) {
       Dictionary<string, object> roleAssignmentsDict = new Dictionary<string, object>();
       foreach (RoleAssignment roleAssignment in roleAssignments) {
         Dictionary<string, object> roleAssignmentDict = new Dictionary<string, object>();
@@ -675,6 +653,12 @@ namespace SpPrefetchIndexBuilder {
         roleAssignmentDict.Add("Title", roleAssignment.Member.Title);
         roleAssignmentDict.Add("PrincipalType", roleAssignment.Member.PrincipalType.ToString());
         roleAssignmentDict.Add("RoleDefinitionIds", defs);
+
+        var userItem = clientContext.Web.SiteUserInfoList.GetItemById(roleAssignment.Member.Id);
+        clientContext.Load(userItem.FieldValuesAsText);
+        clientContext.ExecuteQuery();
+        roleAssignmentDict.Add("IsSiteAdmin", "Yes".Equals(userItem.FieldValuesAsText["IsSiteAdmin"]));
+
         roleAssignmentsDict.Add(roleAssignment.Member.LoginName, roleAssignmentDict);
       }
       itemDict.Add("RoleAssignments", roleAssignmentsDict);
@@ -806,7 +790,7 @@ namespace SpPrefetchIndexBuilder {
       </soap:GetContent>
    </soapenv:Body>
 </soapenv:Envelope>";
-      soapEnvelopeDocument.LoadXml(string.Format(soapEnv, objectType, 
+      soapEnvelopeDocument.LoadXml(string.Format(soapEnv, objectType,
                                                  objectId == null ? "" : "<soap:objectId>" + objectId + "</soap:objectId>"));
       return soapEnvelopeDocument;
     }
