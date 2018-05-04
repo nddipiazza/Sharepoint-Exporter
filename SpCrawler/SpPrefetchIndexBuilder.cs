@@ -241,19 +241,19 @@ namespace SpPrefetchIndexBuilder {
 
       if (help) {
         Console.WriteLine("USAGE: SpPrefetchIndexBuilder.exe " +
-                          "--siteUrl=siteUrl " +
-                          "--incrementalFile=[path to incremental file] " +
-                          "--outputDir=[outputDir] " +
-                          "--domain=[domain] " +
-                          "--username=[username] " +
-                          "--password=[password (not recommended, do not specify to be prompted or use SP_PWD environment variable)] " +
-                          "--numThreads=[optional number of threads to use while fetching] " +
-                          "--maxFileSizeBytes=[optional maximum file size] " +
+                          "--siteUrl=siteUrl \n" +
+                          "--incrementalFile=[path to incremental file] \n" +
+                          "--outputDir=[outputDir] \n" +
+                          "--domain=[domain] \n" +
+                          "--username=[username] \n" +
+                          "--password=[password (not recommended, do not specify to be prompted or use SP_PWD environment variable)] \n" +
+                          "--numThreads=[optional number of threads to use while fetching] \n" +
+                          "--maxFileSizeBytes=[optional maximum file size] \n" +
                           "--onlyWebs=[true if you want to only download web metadeta. default false] --maxFiles=[if > 0 will " +
-                          "only download this many files before quitting. default -1] " +
-                          "--excludeRoleAssignments=[if true will not store obtain role assignment metadata. default false] " +
-                          "--excludeRoleDefinitions=[if true will not store obtain role definition metadata. default false] " +
-                          "--downloadFiles=[Set this to false if you don't want to download the files from the " +
+                          "only download this many files before quitting. default -1] \n" +
+                          "--excludeRoleAssignments=[if true will not store obtain role assignment metadata. default false] \n" +
+                          "--excludeRoleDefinitions=[if true will not store obtain role definition metadata. default false] \n" +
+                          "--downloadFiles=[Set this to false if you don't want to download the files from the \n" +
                           "sharepoint instance. default false]");
         Environment.Exit(0);
       }
