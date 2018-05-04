@@ -18,6 +18,6 @@
   </PropertyGroup>
   <PropertyGroup Condition=" '$(RunConfiguration)' == 'Default' ">
     <StartAction>Project</StartAction>
-    <StartArguments>--siteUrl=http://172.16.11.133 --outputDir=/home/ndipiazza/Downloads/csomout --domain=winlab --username=dev-admin --password=D3v4dm!nistr@t0r --onlyWebs=true</StartArguments>
+    <StartArguments>--siteUrl=http://172.16.11.133 --outputDir=/home/ndipiazza/Downloads/csomout --domain=winlab --username=dev-admin --password=D3v4dm!nistr@t0r --excludeSubSites=true  --excludeLists=true --excludeGroupMembers=true --excludeRoleDefinitions=true --excludeRoleAssignments=true</StartArguments>
   </PropertyGroup>
 </Project>

@@ -10,8 +10,10 @@ using System.Threading;
 using System.Net.Http;
 using System.Xml;
 using System.IO;
+using System.Text;
 
 namespace SpPrefetchIndexBuilder {
+
   class WebToFetch {
     public String url;
     public String rootLevelSiteUrl;
@@ -47,14 +49,16 @@ namespace SpPrefetchIndexBuilder {
     public static HttpClient client;
     public static string rootSite = null;
     public static int numThreads = 50;
-    public static bool onlyWebs = false;
+    public static bool excludeUsersAndGroups = false;
+    public static bool excludeGroupMembers = false;
+    public static bool excludeSubSites = false;
+    public static bool excludeLists = false;
     public static bool excludeRoleDefinitions = false;
     public static bool excludeRoleAssignments = false;
     public static bool deleteExistingOutputDir = false;
-    public static bool doDownloadFiles = false;
+    public static bool excludeFiles = false;
     public static int maxFiles = -1;
 
-    public string defaultSite = "http://localhost/";
     public CredentialCache cc = null;
     public string rootLevelSiteUrl;
     public JavaScriptSerializer serializer = new JavaScriptSerializer();
@@ -95,12 +99,8 @@ namespace SpPrefetchIndexBuilder {
           spib = new SpPrefetchIndexBuilder(args);
           spib.rootLevelSiteUrl = nextSiteCollection;
 
-          if (spib.rootLevelSiteUrl.Contains("://sitemaster-")) {
-            continue;
-          }
-
           Stopwatch swWeb = Stopwatch.StartNew();
-          spib.getSubWebs(spib.rootLevelSiteUrl, spib.rootLevelSiteUrl, null);
+          spib.getWebs(spib.rootLevelSiteUrl, spib.rootLevelSiteUrl, null);
           Parallel.ForEach(
             spib.webFetchList,
             new ParallelOptions { MaxDegreeOfParallelism = numThreads },
@@ -109,7 +109,7 @@ namespace SpPrefetchIndexBuilder {
           spib.writeWebJson();
           Console.WriteLine("Web fetch of {0} complete. Took {1} milliseconds.", spib.rootLevelSiteUrl, swWeb.ElapsedMilliseconds);
 
-          if (!onlyWebs) {
+          if (!excludeLists) {
             Stopwatch swLists = Stopwatch.StartNew();
             Parallel.ForEach(
               spib.listFetchList,
@@ -119,7 +119,7 @@ namespace SpPrefetchIndexBuilder {
             spib.writeAllListsToJson();
             Console.WriteLine("Lists metadata dump of {0} complete. Took {1} milliseconds.", 
                               spib.rootLevelSiteUrl, swLists.ElapsedMilliseconds);
-            if (doDownloadFiles) {
+            if (excludeFiles) {
               Console.WriteLine("Downloading the files recieved during the index building");
               Parallel.ForEach(
                 spib.fileDownloadList,
@@ -190,8 +190,6 @@ namespace SpPrefetchIndexBuilder {
       }
       serializer.MaxJsonLength = 1677721600;
 
-      rootLevelSiteUrl = defaultSite;
-
       bool help = false;
 
       string spDomain = null;
@@ -205,56 +203,68 @@ namespace SpPrefetchIndexBuilder {
         if (arg.Equals("--help") || arg.Equals("-help") || arg.Equals("/help")) {
           help = true;
           break;
-        } else if (arg.StartsWith("--incrementalFile=")) {
+        } else if (arg.StartsWith("--incrementalFile=", StringComparison.CurrentCulture)) {
           incrementalFilePath = arg.Split(new Char[] { '=' })[1];
-        } else if (arg.StartsWith("--siteUrl=")) {
+        } else if (arg.StartsWith("--sharepointUrl=", StringComparison.CurrentCulture)) {
           rootLevelSiteUrl = arg.Split(new Char[] { '=' })[1];
-        } else if (arg.StartsWith("--outputDir=")) {
+        } else if (arg.StartsWith("--outputDir=", StringComparison.CurrentCulture)) {
           baseDir = arg.Split(new Char[] { '=' })[1];
           customBaseDir = true;
-        } else if (arg.StartsWith("--domain=")) {
+        } else if (arg.StartsWith("--domain=", StringComparison.CurrentCulture)) {
           spDomain = arg.Split(new Char[] { '=' })[1];
-        } else if (arg.StartsWith("--username=")) {
+        } else if (arg.StartsWith("--username=", StringComparison.CurrentCulture)) {
           spUsername = arg.Split(new Char[] { '=' })[1];
-        } else if (arg.StartsWith("--password=")) {
+        } else if (arg.StartsWith("--password=", StringComparison.CurrentCulture)) {
           spPassword = arg.Split(new Char[] { '=' })[1];
-        } else if (arg.StartsWith("--numThreads=")) {
+        } else if (arg.StartsWith("--numThreads=", StringComparison.CurrentCulture)) {
           numThreads = int.Parse(arg.Split(new Char[] { '=' })[1]);
-        } else if (arg.StartsWith("--maxFileSizeBytes=")) {
+        } else if (arg.StartsWith("--maxFileSizeBytes=", StringComparison.CurrentCulture)) {
           maxFileSizeBytes = int.Parse(arg.Split(new Char[] { '=' })[1]);
-        } else if (arg.StartsWith("--maxFiles=")) {
+        } else if (arg.StartsWith("--maxFiles=", StringComparison.CurrentCulture)) {
           maxFiles = int.Parse(arg.Split(new Char[] { '=' })[1]);
-        } else if (arg.StartsWith("--onlyWebs=")) {
-          onlyWebs = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
-        } else if (arg.StartsWith("--excludeRoleAssignments=")) {
+        } else if (arg.StartsWith("--excludeUsersAndGroups=", StringComparison.CurrentCulture)) {
+          excludeUsersAndGroups = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
+        } else if (arg.StartsWith("--excludeGroupMembers=", StringComparison.CurrentCulture)) {
+          excludeGroupMembers = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
+        } else if (arg.StartsWith("--excludeSubSites=", StringComparison.CurrentCulture)) {
+          excludeSubSites = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
+        } else if (arg.StartsWith("--excludeLists=", StringComparison.CurrentCulture)) {
+          excludeLists = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
+        } else if (arg.StartsWith("--excludeRoleAssignments=", StringComparison.CurrentCulture)) {
           excludeRoleAssignments = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
-        } else if (arg.StartsWith("--excludeRoleDefinitions=")) {
+        } else if (arg.StartsWith("--excludeRoleDefinitions=", StringComparison.CurrentCulture)) {
           excludeRoleDefinitions = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
-        } else if (arg.StartsWith("--deleteExistingOutputDir=")) {
+        } else if (arg.StartsWith("--excludeFiles=", StringComparison.CurrentCulture)) {
+          excludeFiles = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
+        } else if (arg.StartsWith("--deleteExistingOutputDir=", StringComparison.CurrentCulture)) {
           deleteExistingOutputDir = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
-        } else if (arg.StartsWith("--downloadFiles=")) {
-          doDownloadFiles = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
         } else {
           help = true;
         }
       }
 
+      if (rootLevelSiteUrl == null) {
+        help = true;
+      }
+
       if (help) {
-        Console.WriteLine("USAGE: SpPrefetchIndexBuilder.exe " +
-                          "--siteUrl=siteUrl \n" +
-                          "--incrementalFile=[path to incremental file] \n" +
-                          "--outputDir=[outputDir] \n" +
-                          "--domain=[domain] \n" +
-                          "--username=[username] \n" +
-                          "--password=[password (not recommended, do not specify to be prompted or use SP_PWD environment variable)] \n" +
-                          "--numThreads=[optional number of threads to use while fetching] \n" +
-                          "--maxFileSizeBytes=[optional maximum file size] \n" +
-                          "--onlyWebs=[true if you want to only download web metadeta. default false] --maxFiles=[if > 0 will " +
-                          "only download this many files before quitting. default -1] \n" +
-                          "--excludeRoleAssignments=[if true will not store obtain role assignment metadata. default false] \n" +
-                          "--excludeRoleDefinitions=[if true will not store obtain role definition metadata. default false] \n" +
-                          "--downloadFiles=[Set this to false if you don't want to download the files from the \n" +
-                          "sharepoint instance. default false]");
+        Console.WriteLine(new StringBuilder().AppendLine("USAGE: SpPrefetchIndexBuilder.exe")
+                          .AppendLine("    --sharepointUrl=[The sharepoint url. I.e. http://oursharepoint]   (*required)")
+                          .AppendLine("    --incrementalFile=[path to incremental file]")
+                          .AppendLine("    --outputDir=[outputDir]")
+                          .AppendLine("    --domain=[domain]")
+                          .AppendLine("    --username=[username by default, uses your current user]")
+                          .AppendLine("    --password=[password (not recommended, do not specify to be prompted or use SP_PWD environment variable)]")
+                          .AppendLine("    --numThreads=[optional number of threads to use while fetching. Default 50]")
+                          .AppendLine("    --excludeUsersAndGroups=[exclude users and groups from the top level site collections. default false]")
+                          .AppendLine("    --excludeGroupMembers=[exclude group members from the UsersAndGroups section. default false]")
+                          .AppendLine("    --excludeRoleDefinitions=[if true will not store obtain role definition metadata from the top level site collections. default false] ")
+                          .AppendLine("    --excludeSubSites=[only output the top level sites, do not descend into sub-sites. default false]")
+                          .AppendLine("    --excludeLists=[exclude lists from the results. default false]")
+                          .AppendLine("    --excludeFiles=[Do not download the files from the results] ")
+                          .AppendLine("    --excludeRoleAssignments=[if true will not store obtain role assignment metadata. default false] ")
+                          .AppendLine("    --maxFileSizeBytes=[optional maximum file size. Must be > 0. Default unlimited]")
+                          .AppendLine("    --maxFiles=[if > 0 will only download this many files before quitting. default -1]"));
         Environment.Exit(0);
       }
 
@@ -269,8 +279,10 @@ namespace SpPrefetchIndexBuilder {
         }
       }
       Directory.CreateDirectory(baseDir);
-      if (!onlyWebs) {
+      if (!excludeLists) {
         Directory.CreateDirectory(baseDir + Path.DirectorySeparatorChar + "lists");
+      }
+      if (!excludeLists && !excludeFiles) {
         Directory.CreateDirectory(baseDir + Path.DirectorySeparatorChar + "files");
       }
       if (rootLevelSiteUrl.EndsWith("/")) {
@@ -331,12 +343,21 @@ namespace SpPrefetchIndexBuilder {
 
       var site = clientContext.Site;
       if (excludeRoleDefinitions && excludeRoleDefinitions) {
-        clientContext.Load(web, website => website.Webs, website => website.Title, website => website.Url, 
-                           website => website.Description, website => website.Id, website => website.LastItemModifiedDate);
+        clientContext.Load(web, website => website.Webs,
+                           website => website.Title,
+                           website => website.Url,
+                           website => website.Description,
+                           website => website.Id,
+                           website => website.LastItemModifiedDate);
       } else {
-        clientContext.Load(web, website => website.Webs, website => website.Title, website => website.Url, 
-                           website => website.RoleDefinitions, website => website.RoleAssignments, 
-                           website => website.HasUniqueRoleAssignments, website => website.Description, website => website.Id, 
+        clientContext.Load(web, website => website.Webs,
+                           website => website.Title,
+                           website => website.Url,
+                           website => website.RoleDefinitions,
+                           website => website.RoleAssignments,
+                           website => website.HasUniqueRoleAssignments,
+                           website => website.Description,
+                           website => website.Id,
                            website => website.LastItemModifiedDate);
       }
       try {
@@ -347,7 +368,7 @@ namespace SpPrefetchIndexBuilder {
       }
 
       string listsFileName = Guid.NewGuid().ToString() + ".json";
-      string listsJsonPath = baseDir + Path.DirectorySeparatorChar + "lists" + Path.DirectorySeparatorChar + listsFileName;
+      string listsJsonPath = baseDir + Path.DirectorySeparatorChar.ToString() + "lists" + Path.DirectorySeparatorChar.ToString() + listsFileName;
       Dictionary<string, object> webDict = webToFetch.webDict;
       webDict.Add("Title", web.Title);
       webDict.Add("Id", web.Id);
@@ -355,7 +376,7 @@ namespace SpPrefetchIndexBuilder {
       webDict.Add("Url", url);
       webDict.Add("LastItemModifiedDate", web.LastItemModifiedDate.ToString());
       webDict.Add("FetchedDate", now);
-      if (!onlyWebs) {
+      if (!excludeLists) {
         webDict.Add("ListsFileName", listsFileName);
       }
       if (!excludeRoleAssignments && web.HasUniqueRoleAssignments) {
@@ -385,7 +406,16 @@ namespace SpPrefetchIndexBuilder {
       GroupCollection groups = web.SiteGroups;
       UserCollection users = web.SiteUsers;
       clientContext.Load(lists);
-      clientContext.Load(groups,
+      if (excludeGroupMembers) {
+        clientContext.Load(groups,
+          grp => grp.Include(
+              item => item.Id,
+              item => item.LoginName,
+              item => item.PrincipalType,
+              item => item.Title
+          ));
+      } else {
+        clientContext.Load(groups,
           grp => grp.Include(
               item => item.Users,
               item => item.Id,
@@ -393,11 +423,12 @@ namespace SpPrefetchIndexBuilder {
               item => item.PrincipalType,
               item => item.Title
           ));
+      }
       clientContext.Load(users);
       clientContext.ExecuteQuery();
 
-      Dictionary<string, object> usersAndGroupsDict = new Dictionary<string, object>();
-      if (webToFetch.isRootLevelSite) {
+      if (webToFetch.isRootLevelSite && !excludeUsersAndGroups) {
+        Dictionary<string, object> usersAndGroupsDict = new Dictionary<string, object>();
         foreach (Group group in groups) {
           Dictionary<string, object> groupDict = new Dictionary<string, object>();
           groupDict.Add("Id", "" + group.Id);
@@ -405,16 +436,18 @@ namespace SpPrefetchIndexBuilder {
           groupDict.Add("PrincipalType", group.PrincipalType.ToString());
           groupDict.Add("Title", group.Title);
           Dictionary<string, object> innerUsersDict = new Dictionary<string, object>();
-          foreach (User user in group.Users) {
-            Dictionary<string, object> innerUserDict = new Dictionary<string, object>();
-            innerUserDict.Add("LoginName", user.LoginName);
-            innerUserDict.Add("Id", "" + user.Id);
-            innerUserDict.Add("PrincipalType", user.PrincipalType.ToString());
-            innerUserDict.Add("IsSiteAdmin", "" + user.IsSiteAdmin);
-            innerUserDict.Add("Title", user.Title);
-            innerUsersDict.Add(user.LoginName, innerUserDict);
+          if (!excludeGroupMembers) {
+            foreach (User user in group.Users) {
+              Dictionary<string, object> innerUserDict = new Dictionary<string, object>();
+              innerUserDict.Add("LoginName", user.LoginName);
+              innerUserDict.Add("Id", "" + user.Id);
+              innerUserDict.Add("PrincipalType", user.PrincipalType.ToString());
+              innerUserDict.Add("IsSiteAdmin", "" + user.IsSiteAdmin);
+              innerUserDict.Add("Title", user.Title);
+              innerUsersDict.Add(user.LoginName, innerUserDict);
+            }
+            groupDict.Add("Users", innerUsersDict);
           }
-          groupDict.Add("Users", innerUsersDict);
           usersAndGroupsDict.Add(group.LoginName, groupDict);
         }
         foreach (User user in users) {
@@ -426,12 +459,12 @@ namespace SpPrefetchIndexBuilder {
           userDict.Add("Title", user.Title);
           usersAndGroupsDict.Add(user.LoginName, userDict);
         }
+        webDict.Add("UsersAndGroups", usersAndGroupsDict);
       }
       webDict.Add("IsRootLevelSite", webToFetch.isRootLevelSite);
       if (webToFetch.rootLevelSiteUrl != null) {
         webDict.Add("RootLevelSiteUrl", webToFetch.rootLevelSiteUrl);
       }
-      webDict.Add("UsersAndGroups", usersAndGroupsDict);
       Dictionary<string, object> listsDict = new Dictionary<string, object>();
       foreach (List list in lists) {
         // All sites have a few lists that we don't care about exporting. Exclude these.
@@ -626,7 +659,7 @@ namespace SpPrefetchIndexBuilder {
       }
     }
 
-    public void getSubWebs(string url, string rootLevelSiteUrl, Dictionary<string, object> parentWebDict) {
+    public void getWebs(string url, string rootLevelSiteUrl, Dictionary<string, object> parentWebDict) {
       CheckAbort();
       ClientContext clientContext = getClientContext(url);
       Web oWebsite = clientContext.Web;
@@ -645,8 +678,10 @@ namespace SpPrefetchIndexBuilder {
       webToFetch.isRootLevelSite = parentWebDict == null;
       webToFetch.webDict = new Dictionary<string, object>();
 
-      foreach (Web orWebsite in oWebsite.Webs) {
-        getSubWebs(orWebsite.Url, rootLevelSiteUrl, webToFetch.webDict);
+      if (!excludeSubSites) {
+        foreach (Web orWebsite in oWebsite.Webs) {
+          getWebs(orWebsite.Url, rootLevelSiteUrl, webToFetch.webDict);
+        }
       }
       if (parentWebDict != null) {
         Dictionary<string, object> subWebsDict = null;
