@@ -40,6 +40,7 @@ namespace SpPrefetchIndexBuilder {
   class SpPrefetchIndexBuilder {
     public static string baseDir = null;
     public static FileInfo incrementalFile = null;
+    public static FileInfo sitesFile = null;
     public static void CheckAbort() {
       if (System.IO.File.Exists(baseDir + Path.DirectorySeparatorChar + ".." + Path.DirectorySeparatorChar + ".doabort")) {
         Console.WriteLine("The .doabort file was found. Stopping program");
@@ -82,6 +83,19 @@ namespace SpPrefetchIndexBuilder {
       }
     }
 
+    private bool shouldFetchWeb(string siteUrl) {
+      int numFetchSites = 0;
+      if (sitesFile != null && sitesFile.Exists) {
+        foreach (string nextSite in System.IO.File.ReadLines(sitesFile.FullName)) {
+          ++numFetchSites;
+          if (siteUrl.ToLower().Trim().StartsWith(nextSite.ToLower().Trim(), StringComparison.CurrentCulture)) {
+            return true;
+          }
+        }
+      }
+      return numFetchSites == 0;
+    }
+
     public static void buildFullIndex(String [] args) {
       try {
         Stopwatch sw = Stopwatch.StartNew();
@@ -98,6 +112,11 @@ namespace SpPrefetchIndexBuilder {
         foreach (String nextSiteCollection in siteCollections) {
           spib = new SpPrefetchIndexBuilder(args);
           spib.rootLevelSiteUrl = nextSiteCollection;
+
+          if (!spib.shouldFetchWeb(nextSiteCollection)) {
+            Console.WriteLine("Site collection url {0} is not in sitesFile. Skipping.", nextSiteCollection);
+            continue;
+          }
 
           Stopwatch swWeb = Stopwatch.StartNew();
           spib.getWebs(spib.rootLevelSiteUrl, spib.rootLevelSiteUrl, null);
@@ -198,6 +217,7 @@ namespace SpPrefetchIndexBuilder {
       baseDir = Directory.GetCurrentDirectory();
       bool customBaseDir = false;
       string incrementalFilePath = null;
+      string sitesFilePath = null;
 
       foreach (string arg in args) {
         if (arg.Equals("--help") || arg.Equals("-help") || arg.Equals("/help")) {
@@ -205,6 +225,8 @@ namespace SpPrefetchIndexBuilder {
           break;
         } else if (arg.StartsWith("--incrementalFile=", StringComparison.CurrentCulture)) {
           incrementalFilePath = arg.Split(new Char[] { '=' })[1];
+        } else if (arg.StartsWith("--sitesFile=", StringComparison.CurrentCulture)) {
+          sitesFilePath = arg.Split(new Char[] { '=' })[1];
         } else if (arg.StartsWith("--sharepointUrl=", StringComparison.CurrentCulture)) {
           rootLevelSiteUrl = arg.Split(new Char[] { '=' })[1];
         } else if (arg.StartsWith("--outputDir=", StringComparison.CurrentCulture)) {
@@ -239,21 +261,24 @@ namespace SpPrefetchIndexBuilder {
         } else if (arg.StartsWith("--deleteExistingOutputDir=", StringComparison.CurrentCulture)) {
           deleteExistingOutputDir = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
         } else {
+          Console.WriteLine("ERROR - Unrecognized argument {0}.", arg);
           help = true;
         }
       }
 
       if (rootLevelSiteUrl == null) {
+        Console.WriteLine("ERROR - Must specify --sharepointUrl argument");
         help = true;
       }
 
       if (help) {
         Console.WriteLine(new StringBuilder().AppendLine("USAGE: SpPrefetchIndexBuilder.exe")
                           .AppendLine("    --sharepointUrl=[The sharepoint url. I.e. http://oursharepoint]   (*required)")
-                          .AppendLine("    --incrementalFile=[path to incremental file]")
-                          .AppendLine("    --outputDir=[outputDir]")
-                          .AppendLine("    --domain=[domain]")
-                          .AppendLine("    --username=[username by default, uses your current user]")
+                          .AppendLine("    --incrementalFile=[optional - path to incremental file created during a previous run. if specified, will only fetch incremental changes based on this file.]")
+                          .AppendLine("    --sitesFile=[optional - path to sites file. this is a list]")
+                          .AppendLine("    --outputDir=[optional - where to save the output. default will use this directory.]")
+                          .AppendLine("    --domain=[optional - netbios domain of the user to crawl as]")
+                          .AppendLine("    --username=[optional - specify a username to crawl as. must specify domain if using this]")
                           .AppendLine("    --password=[password (not recommended, do not specify to be prompted or use SP_PWD environment variable)]")
                           .AppendLine("    --numThreads=[optional number of threads to use while fetching. Default 50]")
                           .AppendLine("    --excludeUsersAndGroups=[exclude users and groups from the top level site collections. default false]")
@@ -278,6 +303,13 @@ namespace SpPrefetchIndexBuilder {
           Environment.Exit(1);
         }
       }
+      if (sitesFilePath != null) {
+        sitesFile = new FileInfo(sitesFilePath);
+        if (!sitesFile.Exists) {
+          Console.WriteLine("Error - sites file {0} doesn't exist", sitesFilePath);
+          Environment.Exit(1);
+        }
+      }
       Directory.CreateDirectory(baseDir);
       if (!excludeLists) {
         Directory.CreateDirectory(baseDir + Path.DirectorySeparatorChar + "lists");
@@ -285,7 +317,7 @@ namespace SpPrefetchIndexBuilder {
       if (!excludeLists && !excludeFiles) {
         Directory.CreateDirectory(baseDir + Path.DirectorySeparatorChar + "files");
       }
-      if (rootLevelSiteUrl.EndsWith("/")) {
+      if (rootLevelSiteUrl.EndsWith("/", StringComparison.CurrentCulture)) {
         rootLevelSiteUrl = rootLevelSiteUrl.Substring(0, rootLevelSiteUrl.Length - 1);
       }
       cc = new CredentialCache();
@@ -336,6 +368,10 @@ namespace SpPrefetchIndexBuilder {
       CheckAbort();
       DateTime now = DateTime.Now;
       string url = webToFetch.url;
+      if (!shouldFetchWeb(url)) {
+        Console.WriteLine("Site url {0} is not in sitesFile. Skipping.", url);
+        return;
+      }
       Console.WriteLine("Thread {0} exporting web {1}", Thread.CurrentThread.ManagedThreadId, url);
       ClientContext clientContext = getClientContext(url);
 
