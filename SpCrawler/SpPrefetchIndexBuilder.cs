@@ -22,9 +22,8 @@ namespace SpPrefetchIndexBuilder {
     }
     public static int fileCount = 0;
     public string rootSite;
-    public static HttpClient client;
+    public static HttpClient httpClient;
     public CredentialCache csomCredentialsCache = null;
-    public CredentialCache httpClientCredentialsCache = null;
     public List<ListToFetch> listFetchList = new List<ListToFetch>();
     public List<WebToFetch> webFetchList = new List<WebToFetch>();
     public List<FileToDownload> fileDownloadList = new List<FileToDownload>();
@@ -59,9 +58,9 @@ namespace SpPrefetchIndexBuilder {
           cc.Add(new Uri(config.sites[0]), "NTLM", config.networkCredentials);
           HttpClientHandler handler = new HttpClientHandler();
           handler.Credentials = cc;
-          client = new HttpClient(handler);
-          client.Timeout = TimeSpan.FromSeconds(30);
-          client.DefaultRequestHeaders.ConnectionClose = true;
+          HttpClient soapHttpClient = new HttpClient(handler);
+          soapHttpClient.Timeout = TimeSpan.FromSeconds(30);
+          soapHttpClient.DefaultRequestHeaders.ConnectionClose = true;
           SiteCollectionsUtil siteCollectionsUtil = new SiteCollectionsUtil(cc, config.sites[0]);
           foreach (string nextSite in siteCollectionsUtil.GetAllSiteCollections()) {
             string nextSiteWithSlashAddedIfNeeded = Util.addSlashToUrlIfNeeded(nextSite);
@@ -70,7 +69,7 @@ namespace SpPrefetchIndexBuilder {
               config.sites.Add(nextSiteWithSlashAddedIfNeeded);
             }  
           }
-
+          soapHttpClient.Dispose();
         }
       }
       bool isIncremental = false;
@@ -104,18 +103,13 @@ namespace SpPrefetchIndexBuilder {
 
       csomCredentialsCache = new CredentialCache();
       csomCredentialsCache.Add(new Uri(rootSite), SharepointExporterConfig.AUTH_SCHEME, config.networkCredentials);
-      httpClientCredentialsCache = new CredentialCache { { Util.getBaseUrlHost(rootSite), Util.getBaseUrlPort(rootSite), SharepointExporterConfig.AUTH_SCHEME, config.networkCredentials } };
 
+      CredentialCache credentialCache = new CredentialCache { { Util.getBaseUrlHost(rootSite), Util.getBaseUrlPort(rootSite), SharepointExporterConfig.AUTH_SCHEME, config.networkCredentials } };
       var httpHandler = new HttpClientHandler() {
         CookieContainer = new CookieContainer(),
-        Credentials = httpClientCredentialsCache.GetCredential(Util.getBaseUrlHost(rootSite), Util.getBaseUrlPort(rootSite), SharepointExporterConfig.AUTH_SCHEME)
+        Credentials = credentialCache.GetCredential(Util.getBaseUrlHost(rootSite), Util.getBaseUrlPort(rootSite), SharepointExporterConfig.AUTH_SCHEME)
       };
-
-      client = new HttpClient(httpHandler) {
-        Timeout = new TimeSpan(0, 0, 0, 30)
-      };
-
-      client.DefaultRequestHeaders.ConnectionClose = true;
+      httpClient = new HttpClient(httpHandler);
     }
 
     public void buildFullIndex() {
@@ -223,27 +217,27 @@ namespace SpPrefetchIndexBuilder {
 
     public void DownloadFile(FileToDownload toDownload) {
       ThreadContext.Properties["threadid"] = "FileThread" + Thread.CurrentThread.ManagedThreadId;
+
       if (config.maxFiles > 0 && fileCount++ >= config.maxFiles) {
         log.InfoFormat("Not downloading file {0} because maxFiles limit of {1} has been reached.", 
                           toDownload.serverRelativeUrl, config.maxFiles);
         return;
       }
+      string nextFileUrl = Util.getBaseUrl(rootSite) + toDownload.serverRelativeUrl;
       try {
-        var responseResult = client.GetAsync(rootSite + toDownload.serverRelativeUrl);
-        if (responseResult.Result != null && responseResult.Result.StatusCode == System.Net.HttpStatusCode.OK) {
+        var responseResult = httpClient.GetAsync(nextFileUrl);
+        if (responseResult.Result != null && responseResult.Result.StatusCode == HttpStatusCode.OK) {
           using (var memStream = responseResult.Result.Content.ReadAsStreamAsync().GetAwaiter().GetResult()) {
             using (var fileStream = System.IO.File.Create(toDownload.saveToPath)) {
               memStream.CopyTo(fileStream);
             }
           }
-          log.InfoFormat("Successfully downloaded {0} to {1}", toDownload.serverRelativeUrl, toDownload.saveToPath);
+          log.InfoFormat("Successfully downloaded {0} to {1}", nextFileUrl, toDownload.saveToPath);
         } else {
-          log.ErrorFormat("Got non-OK status {0} when trying to download url {1}", responseResult.Result.StatusCode, 
-                            rootSite + toDownload.serverRelativeUrl);
+          log.ErrorFormat("Got non-OK status {0} when trying to download url {1}", responseResult.Result.StatusCode, nextFileUrl);
         }
       } catch (Exception e) {
-        log.ErrorFormat("Gave up trying to download url {0}{1} to file {2} due to error: {3}", rootSite, 
-                          toDownload.serverRelativeUrl, toDownload.saveToPath, e);
+        log.ErrorFormat("Gave up trying to download url {0} to file {1} due to error: {2}", nextFileUrl, toDownload.saveToPath, e);
       }
     }
 
@@ -252,7 +246,7 @@ namespace SpPrefetchIndexBuilder {
       CheckAbort();
       DateTime now = DateTime.UtcNow;
       string url = webToFetch.url;
-      log.InfoFormat("Starting fetch web {0}", url);
+      log.InfoFormat("Started fetching web {0}", url);
       ClientContext clientContext = getClientContext(url);
 
       Web web = clientContext.Web;
@@ -398,7 +392,7 @@ namespace SpPrefetchIndexBuilder {
       nextListOutput.jsonPath = listsJsonPath;
       nextListOutput.listsDict = listsDict;
       listsOutput.Add(nextListOutput);
-      log.InfoFormat("Finished fetch web {0}", url);
+      log.InfoFormat("Finished fetching web {0}", url);
     }
 
     public void FetchList(ListToFetch listToFetch) {
@@ -413,7 +407,7 @@ namespace SpPrefetchIndexBuilder {
             lslist => lslist.Description, lslist => lslist.LastItemModifiedDate, lslist => lslist.RootFolder, 
                            lslist => lslist.DefaultDisplayFormUrl);
         clientContext.ExecuteQuery();
-        log.InfoFormat("Start fetch list site={0}, listID={1}, listTitle={2}", listToFetch.site, list.Id, list.Title);
+        log.InfoFormat("Started fetching list site={0}, listID={1}, listTitle={2}", listToFetch.site, list.Id, list.Title);
         CamlQuery camlQuery = new CamlQuery();
         camlQuery.ViewXml = "<View Scope=\"RecursiveAll\"></View>";
         ListItemCollection collListItem = list.GetItems(camlQuery);
@@ -533,7 +527,7 @@ namespace SpPrefetchIndexBuilder {
         } else {
           listToFetch.listsDict.Add(list.Id.ToString(), listDict);
         }
-        log.InfoFormat("Finish fetch list site={0}, listID={1}, listTitle={2}", listToFetch.site, list.Id, list.Title);
+        log.InfoFormat("Finished fetching list site={0}, listID={1}, listTitle={2}", listToFetch.site, list.Id, list.Title);
       } catch (Exception e) {
         log.ErrorFormat("Got error trying to fetch list {0}: {1}", listToFetch.listId, e);
       }
