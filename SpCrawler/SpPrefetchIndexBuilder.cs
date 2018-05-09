@@ -131,16 +131,20 @@ namespace SpPrefetchIndexBuilder {
             toFetchList => { FetchList(toFetchList); }
           );
           writeAllListsToJson();
-          log.InfoFormat("Lists metadata dump of {0} complete. Took {1} milliseconds.", 
+          log.InfoFormat("Lists metadata dump of {0} complete. Took {1} milliseconds.",
                             rootSite, swLists.ElapsedMilliseconds);
-          if (config.excludeFiles) {
+          if (!config.excludeFiles) {
             log.InfoFormat("Downloading the files recieved during the index building");
             Parallel.ForEach(
               fileDownloadList,
               new ParallelOptions { MaxDegreeOfParallelism = config.numThreads },
               toDownload => { DownloadFile(toDownload); }
             );
+          } else {
+            log.Info("Not fetching files because they are --excludeFiles=true");
           }
+        } else {
+          log.Info("Not fetching lists because they are --excludeLists=true");
         }
       } catch (Exception anyException) {
         log.ErrorFormat("Prefetch index building failed for site {0} due to {1}", rootSite, anyException);
@@ -239,7 +243,7 @@ namespace SpPrefetchIndexBuilder {
       CheckAbort();
       DateTime now = DateTime.UtcNow;
       string url = webToFetch.url;
-      log.InfoFormat("Fetching web {0}", url);
+      log.InfoFormat("Starting fetch web {0}", url);
       ClientContext clientContext = getClientContext(url);
 
       Web web = clientContext.Web;
@@ -385,6 +389,7 @@ namespace SpPrefetchIndexBuilder {
       nextListOutput.jsonPath = listsJsonPath;
       nextListOutput.listsDict = listsDict;
       listsOutput.Add(nextListOutput);
+      log.InfoFormat("Finished fetch web {0}", url);
     }
 
     public void FetchList(ListToFetch listToFetch) {
@@ -399,7 +404,7 @@ namespace SpPrefetchIndexBuilder {
             lslist => lslist.Description, lslist => lslist.LastItemModifiedDate, lslist => lslist.RootFolder, 
                            lslist => lslist.DefaultDisplayFormUrl);
         clientContext.ExecuteQuery();
-        log.InfoFormat("Parsing list site={0}, listID={1}, listTitle={2}", listToFetch.site, list.Id, list.Title);
+        log.InfoFormat("Start fetch list site={0}, listID={1}, listTitle={2}", listToFetch.site, list.Id, list.Title);
         CamlQuery camlQuery = new CamlQuery();
         camlQuery.ViewXml = "<View Scope=\"RecursiveAll\"></View>";
         ListItemCollection collListItem = list.GetItems(camlQuery);
@@ -519,6 +524,7 @@ namespace SpPrefetchIndexBuilder {
         } else {
           listToFetch.listsDict.Add(list.Id.ToString(), listDict);
         }
+        log.InfoFormat("Finish fetch list site={0}, listID={1}, listTitle={2}", listToFetch.site, list.Id, list.Title);
       } catch (Exception e) {
         log.ErrorFormat("Got error trying to fetch list {0}: {1}", listToFetch.listId, e);
       }
@@ -584,6 +590,8 @@ namespace SpPrefetchIndexBuilder {
         foreach (Web orWebsite in oWebsite.Webs) {
           getWebs(orWebsite.Url, rootLevelSiteUrl, webToFetch.webDict);
         }
+      } else {
+        log.Info("Not fetching sub sites because --excludeSubSites=true");
       }
       if (parentWebDict != null) {
         Dictionary<string, object> subWebsDict = null;
