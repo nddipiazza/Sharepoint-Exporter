@@ -59,7 +59,7 @@ namespace SpPrefetchIndexBuilder {
           HttpClientHandler handler = new HttpClientHandler();
           handler.Credentials = cc;
           HttpClient soapHttpClient = new HttpClient(handler);
-          soapHttpClient.Timeout = TimeSpan.FromSeconds(30);
+          soapHttpClient.Timeout = TimeSpan.FromSeconds(config.fileDownloadTimeoutSecs);
           soapHttpClient.DefaultRequestHeaders.ConnectionClose = true;
           SiteCollectionsUtil siteCollectionsUtil = new SiteCollectionsUtil(cc, config.sites[0]);
           foreach (string nextSite in siteCollectionsUtil.GetAllSiteCollections()) {
@@ -110,6 +110,8 @@ namespace SpPrefetchIndexBuilder {
         Credentials = credentialCache.GetCredential(Util.getBaseUrlHost(rootSite), Util.getBaseUrlPort(rootSite), SharepointExporterConfig.AUTH_SCHEME)
       };
       httpClient = new HttpClient(httpHandler);
+      httpClient.Timeout = TimeSpan.FromSeconds(config.fileDownloadTimeoutSecs);
+      httpClient.DefaultRequestHeaders.ConnectionClose = true;
     }
 
     public void buildFullIndex() {
@@ -219,7 +221,7 @@ namespace SpPrefetchIndexBuilder {
         if (previousSubWebs.Count > 0) {
           log.InfoFormat("Web {0} has {1} subwebs. Processing them recursively.", previousIncrementalDict["Url"], previousSubWebs.Count);
           foreach (string subWebUrl in previousSubWebs.Keys) {
-            newSubWebs.Add(subWebUrl, buildIncrementalIndex(previousSubWebs));
+            newSubWebs.Add(subWebUrl, buildIncrementalIndex((Dictionary<string, object>)previousSubWebs[subWebUrl]));
           }
         }
         newIncrementalDict.Add("SubWebs", newSubWebs);

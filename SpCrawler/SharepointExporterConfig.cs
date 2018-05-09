@@ -30,6 +30,7 @@ namespace SpPrefetchIndexBuilder {
     public JavaScriptSerializer serializer = new JavaScriptSerializer();
     public int maxFileSizeBytes = -1;
     public int fileCount = 0;
+    public int fileDownloadTimeoutSecs = 30;
     public NetworkCredential networkCredentials;
 
     public SharepointExporterConfig(string[] args) {
@@ -114,6 +115,8 @@ namespace SpPrefetchIndexBuilder {
           maxFileSizeBytes = int.Parse(arg.Split(new Char[] { '=' })[1]);
         } else if (arg.StartsWith("--maxFiles=", StringComparison.CurrentCulture)) {
           maxFiles = int.Parse(arg.Split(new Char[] { '=' })[1]);
+        } else if (arg.StartsWith("--fileDownloadTimeoutSecs=", StringComparison.CurrentCulture)) {
+          fileDownloadTimeoutSecs = int.Parse(arg.Split(new Char[] { '=' })[1]);
         } else if (arg.StartsWith("--excludeUsersAndGroups=", StringComparison.CurrentCulture)) {
           excludeUsersAndGroups = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
         } else if (arg.StartsWith("--excludeGroupMembers=", StringComparison.CurrentCulture)) {
