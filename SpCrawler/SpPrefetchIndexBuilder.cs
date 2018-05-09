@@ -23,7 +23,8 @@ namespace SpPrefetchIndexBuilder {
     public static int fileCount = 0;
     public string rootSite;
     public static HttpClient client;
-    public CredentialCache cc;
+    public CredentialCache csomCredentialsCache = null;
+    public CredentialCache httpClientCredentialsCache = null;
     public List<ListToFetch> listFetchList = new List<ListToFetch>();
     public List<WebToFetch> webFetchList = new List<WebToFetch>();
     public List<FileToDownload> fileDownloadList = new List<FileToDownload>();
@@ -45,6 +46,8 @@ namespace SpPrefetchIndexBuilder {
       if (!config.excludeLists && !config.excludeFiles) {
         Directory.CreateDirectory(config.baseDir + Path.DirectorySeparatorChar + "files");
       }
+
+      log.InfoFormat("Sharepoint Exporter will run with {0} threads.", config.numThreads);
 
       ServicePointManager.DefaultConnectionLimit = config.numThreads;
 
@@ -99,13 +102,19 @@ namespace SpPrefetchIndexBuilder {
     public SpPrefetchIndexBuilder(string rootSite) {
       this.rootSite = rootSite;
 
-      cc = new CredentialCache();
+      csomCredentialsCache = new CredentialCache();
+      csomCredentialsCache.Add(new Uri(rootSite), SharepointExporterConfig.AUTH_SCHEME, config.networkCredentials);
+      httpClientCredentialsCache = new CredentialCache { { Util.getBaseUrlHost(rootSite), Util.getBaseUrlPort(rootSite), SharepointExporterConfig.AUTH_SCHEME, config.networkCredentials } };
 
-      cc.Add(new Uri(rootSite), "NTLM", config.networkCredentials);
-      HttpClientHandler handler = new HttpClientHandler();
-      handler.Credentials = cc;
-      client = new HttpClient(handler);
-      client.Timeout = TimeSpan.FromSeconds(30);
+      var httpHandler = new HttpClientHandler() {
+        CookieContainer = new CookieContainer(),
+        Credentials = httpClientCredentialsCache.GetCredential(Util.getBaseUrlHost(rootSite), Util.getBaseUrlPort(rootSite), SharepointExporterConfig.AUTH_SCHEME)
+      };
+
+      client = new HttpClient(httpHandler) {
+        Timeout = new TimeSpan(0, 0, 0, 30)
+      };
+
       client.DefaultRequestHeaders.ConnectionClose = true;
     }
 
@@ -554,8 +563,8 @@ namespace SpPrefetchIndexBuilder {
     public ClientContext getClientContext(string site) {
       ClientContext clientContext = new ClientContext(site);
       clientContext.RequestTimeout = -1;
-      if (cc != null) {
-        clientContext.Credentials = cc;
+      if (csomCredentialsCache != null) {
+        clientContext.Credentials = csomCredentialsCache;
       }
       return clientContext;
     }

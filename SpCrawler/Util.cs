@@ -18,5 +18,16 @@ namespace SpPrefetchIndexBuilder {
         return Path.GetDirectoryName(path);
       }
     }
+    public static string getBaseUrl(string siteUrl) {
+      return new Uri(siteUrl).Scheme + "://" + new Uri(siteUrl).Host;
+    }
+
+    public static int getBaseUrlPort(string siteUrl) {
+      return new Uri(siteUrl).Port;
+    }
+
+    public static string getBaseUrlHost(string siteUrl) {
+      return new Uri(siteUrl).Host;
+    }
   }
 }

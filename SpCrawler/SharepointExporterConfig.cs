@@ -10,6 +10,7 @@ namespace SpPrefetchIndexBuilder {
   
   public class SharepointExporterConfig {
     private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+    public const string AUTH_SCHEME = "NTLM";
 
     public List<string> sites = new List<string>();
     public List<string> ignoreListNames = new List<string>();
