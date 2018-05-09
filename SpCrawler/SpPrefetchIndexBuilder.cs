@@ -33,7 +33,7 @@ namespace SpPrefetchIndexBuilder {
     public List<string> ignoreListNames = new List<string>();
 
     static void Main(string[] args) {
-      ThreadContext.Properties["threadid"] = "Main" + Thread.CurrentThread.ManagedThreadId;
+      ThreadContext.Properties["threadid"] = "Main";
       config = new SharepointExporterConfig(args);
       if (config.customBaseDir && config.deleteExistingOutputDir && Directory.Exists(config.baseDir)) {
         deleteDirectory(config.baseDir);
