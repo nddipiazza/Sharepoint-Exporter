@@ -7,10 +7,11 @@ using System.Threading.Tasks;
 using System.Threading;
 using System.Net.Http;
 using System.IO;
+using log4net;
 
 namespace SpPrefetchIndexBuilder {
   class SpPrefetchIndexBuilder {
-    private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+    static readonly ILog log = LogManager.GetLogger(typeof(SpPrefetchIndexBuilder));
 
     public static SharepointExporterConfig config;
     public static void CheckAbort() {
@@ -22,7 +23,7 @@ namespace SpPrefetchIndexBuilder {
     public static int fileCount = 0;
     public string rootSite;
     public static HttpClient client;
-    public CredentialCache cc = null;
+    public CredentialCache cc;
     public List<ListToFetch> listFetchList = new List<ListToFetch>();
     public List<WebToFetch> webFetchList = new List<WebToFetch>();
     public List<FileToDownload> fileDownloadList = new List<FileToDownload>();
@@ -652,8 +653,5 @@ namespace SpPrefetchIndexBuilder {
       }
       return files;
     }
-
-
-
   }
 }
