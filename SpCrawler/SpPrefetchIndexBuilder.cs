@@ -111,7 +111,6 @@ namespace SpPrefetchIndexBuilder {
       };
       httpClient = new HttpClient(httpHandler);
       httpClient.Timeout = TimeSpan.FromSeconds(config.fileDownloadTimeoutSecs);
-      httpClient.DefaultRequestHeaders.ConnectionClose = true;
     }
 
     public void buildFullIndex() {
