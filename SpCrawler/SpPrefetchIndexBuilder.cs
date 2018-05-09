@@ -158,11 +158,12 @@ namespace SpPrefetchIndexBuilder {
     public Dictionary<string, object> buildIncrementalIndex(Dictionary<string, object> previousIncrementalDict) {
       Dictionary<string, object> newIncrementalDict = new Dictionary<string, object>();
       newIncrementalDict.Add("Url", previousIncrementalDict["Url"]);
+
       Dictionary<string, object> changesDict = new Dictionary<string, object>();
       newIncrementalDict.Add("changes", changesDict);
       string url = (string)previousIncrementalDict["Url"];
       DateTime fetchedDate = (DateTime)previousIncrementalDict["FetchedDate"];
-      log.InfoFormat("Incremental crawl running for URL {0} getting changes since {1}", url, TimeZoneInfo.ConvertTimeFromUtc(fetchedDate, TimeZoneInfo.Local));
+      log.InfoFormat("Processing incremental changes for URL {0} getting changes since {1}", url, TimeZoneInfo.ConvertTimeFromUtc(fetchedDate, TimeZoneInfo.Local));
       newIncrementalDict["FetchedDate"] = DateTime.UtcNow;
       SharepointChanges sharepointChanges = new SharepointChanges();
       ClientContext clientContext = getClientContext(url);
@@ -210,6 +211,18 @@ namespace SpPrefetchIndexBuilder {
                           TimeZoneInfo.ConvertTimeFromUtc((DateTime)previousIncrementalDict["FetchedDate"], TimeZoneInfo.Local));
       } else {
         log.InfoFormat("No incremental changes found for {0}. Next incremental timestamp will be: {1}", site.Url, TimeZoneInfo.ConvertTimeFromUtc((DateTime)previousIncrementalDict["FetchedDate"], TimeZoneInfo.Local));
+      }
+
+      if (previousIncrementalDict.ContainsKey("SubWebs")) {
+        Dictionary<string, object> previousSubWebs = (Dictionary<string, object>)previousIncrementalDict["SubWebs"];
+        Dictionary<string, object> newSubWebs = new Dictionary<string, object>();
+        if (previousSubWebs.Count > 0) {
+          log.InfoFormat("Web {0} has {1} subwebs. Processing them recursively.", previousIncrementalDict["Url"], previousSubWebs.Count);
+          foreach (string subWebUrl in previousSubWebs.Keys) {
+            newSubWebs.Add(subWebUrl, buildIncrementalIndex(previousSubWebs));
+          }
+        }
+        newIncrementalDict.Add("SubWebs", newSubWebs);
       }
       return newIncrementalDict;
     }
