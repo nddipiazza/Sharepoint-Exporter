@@ -434,7 +434,7 @@ namespace SpPrefetchIndexBuilder {
           try {
             contentTypeName = listItem.ContentType.Name;
           } catch (Exception excep) {
-            Console.WriteLine("Couldn't get listItem.ContentType.Name for list item ListId={0], ItemId={1}, DisplayName={2} due to {3}", list.Id, listItem.Id, listItem.DisplayName, excep);
+            Console.WriteLine("Couldn't get listItem.ContentType.Name for list item ListId={0}, ItemId={1}, DisplayName={2} due to {3}", list.Id, listItem.Id, listItem.DisplayName, excep);
           }
           itemDict.Add("ContentTypeName", contentTypeName);
           if (contentTypeName.Equals("Document") && listItem.FieldValues.ContainsKey("FileRef")) {
