@@ -75,24 +75,24 @@ Creates an output directory in the `outputDir` directory you specified in the cm
 
 # How to build on Linux
 
-* Install packages `mono-devel` following instructions for your particular distro here: http://www.mono-project.com/download/#download-lin
+* Install for your particular distro here: http://www.mono-project.com/download/#download-lin
+
+NOTE: Do not use the default packages from your OS' default apt-get repository!!! Make sure to get it using the mono-project.com repository as specified in the instructions.
 
 * Install package `nuget`
 
-Do not use the default packages from your OS' repository using `apt-get`. Make sure to get it using the mono-project.com repository as specified in the instructions.
-
-Does not work for mono version 4.x. Tested only on Mono JIT compiler version 5.10.1.4.
+Does not work for mono version 4.x! Tested only on Mono 5.10.x and 5.12.x 
 
 * To make code changes in the monodevelop IDE, install it with:
 
 ```
-flatpak install --user --from https://download.mono-project.com/repo/monodevelop.flatpakref
+apt install monodevelop monodevelop-versioncontrol
 ```
 
  And run it with 
 
 ```
- /usr/bin/flatpak run --branch=stable --arch=x86_64 --command=monodevelop com.xamarin.MonoDevelop %F
+ /usr/bin/monodevelop
 ```
 
 * Build using: `build.sh`
