@@ -33,7 +33,6 @@ namespace SpPrefetchIndexBuilder {
     public List<string> ignoreListNames = new List<string>();
 
     static void Main(string[] args) {
-      log4net.Config.XmlConfigurator.Configure(new FileInfo(Util.AssemblyDirectory + Path.DirectorySeparatorChar + "log4net.config"));
       config = new SharepointExporterConfig(args);
       if (config.customBaseDir && config.deleteExistingOutputDir && Directory.Exists(config.baseDir)) {
         deleteDirectory(config.baseDir);
