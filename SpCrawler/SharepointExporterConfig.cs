@@ -179,6 +179,7 @@ namespace SpPrefetchIndexBuilder {
                           .AppendLine("    --maxFiles=[if > 0 will only download this many files before quitting. default -1]"));
         Environment.Exit(0);
       }
+
     }
     private SecureString GetPassword() {
       var pwd = new SecureString();

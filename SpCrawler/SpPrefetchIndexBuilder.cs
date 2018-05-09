@@ -45,6 +45,22 @@ namespace SpPrefetchIndexBuilder {
 
       ServicePointManager.DefaultConnectionLimit = config.numThreads;
 
+      if (config.sites.Count == 1) {
+        Uri onlyUri = new Uri(config.sites[0]);
+        if (onlyUri.PathAndQuery == "/") {
+          Console.WriteLine("Only found the top-most root URL of a sharepoint site {0}. Will attempt to fetch site collections with SiteData.asmx.", config.sites[0]);
+          CredentialCache cc = new CredentialCache();
+          cc.Add(new Uri(config.sites[0]), "NTLM", config.networkCredentials);
+          HttpClientHandler handler = new HttpClientHandler();
+          handler.Credentials = cc;
+          client = new HttpClient(handler);
+          client.Timeout = TimeSpan.FromSeconds(30);
+          client.DefaultRequestHeaders.ConnectionClose = true;
+          SiteCollectionsUtil siteCollectionsUtil = new SiteCollectionsUtil(cc, config.sites[0]);
+          config.sites.AddRange(siteCollectionsUtil.GetAllSiteCollections());
+        }
+      }
+
       foreach (string site in config.sites) {
         SpPrefetchIndexBuilder spib = new SpPrefetchIndexBuilder(site);
         spib.buildFullIndex();
@@ -352,7 +368,7 @@ namespace SpPrefetchIndexBuilder {
             itemDict.Add("TimeLastModified", listItem.File.TimeLastModified.ToString());
             itemDict.Add("ListItemType", "List_Item");
             if (config.maxFileSizeBytes < 0 || listItem.FieldValues.ContainsKey("File_x0020_Size") == false || 
-                int.Parse((string)listItem.FieldValues["File_x0020_Size"]) < maxFileSizeBytes) {
+                int.Parse((string)listItem.FieldValues["File_x0020_Size"]) < config.maxFileSizeBytes) {
               string filePath = config.baseDir + Path.DirectorySeparatorChar + "files" + Path.DirectorySeparatorChar + 
                                               Guid.NewGuid().ToString() + Path.GetExtension(listItem.File.Name);
               FileToDownload toDownload = new FileToDownload();
