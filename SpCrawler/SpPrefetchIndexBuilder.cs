@@ -10,10 +10,12 @@ using System.IO;
 
 namespace SpPrefetchIndexBuilder {
   class SpPrefetchIndexBuilder {
+    private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+
     public static SharepointExporterConfig config;
     public static void CheckAbort() {
       if (System.IO.File.Exists(config.baseDir + Path.DirectorySeparatorChar + ".." + Path.DirectorySeparatorChar + ".doabort")) {
-        Console.WriteLine("The .doabort file was found. Stopping program");
+        log.WarnFormat("The .doabort file was found. Stopping program");
         Environment.Exit(0);
       }
     }
@@ -30,7 +32,6 @@ namespace SpPrefetchIndexBuilder {
     public List<string> ignoreListNames = new List<string>();
 
     static void Main(string[] args) {
-      
       config = new SharepointExporterConfig(args);
       if (config.customBaseDir && config.deleteExistingOutputDir && Directory.Exists(config.baseDir)) {
         deleteDirectory(config.baseDir);
@@ -48,7 +49,7 @@ namespace SpPrefetchIndexBuilder {
       if (config.sites.Count == 1) {
         Uri onlyUri = new Uri(config.sites[0]);
         if (onlyUri.PathAndQuery == "/") {
-          Console.WriteLine("Only found the top-most root URL of a sharepoint site {0}. Will attempt to fetch site collections with SiteData.asmx.", config.sites[0]);
+          log.InfoFormat("Only found the top-most root URL of a sharepoint site {0}. Will attempt to fetch site collections with SiteData.asmx.", config.sites[0]);
           CredentialCache cc = new CredentialCache();
           cc.Add(new Uri(config.sites[0]), "NTLM", config.networkCredentials);
           HttpClientHandler handler = new HttpClientHandler();
@@ -60,7 +61,7 @@ namespace SpPrefetchIndexBuilder {
           foreach (string nextSite in siteCollectionsUtil.GetAllSiteCollections()) {
             string nextSiteWithSlashAddedIfNeeded = Util.addSlashToUrlIfNeeded(nextSite);
             if (!config.sites.Contains(nextSite)) {
-              Console.WriteLine("Adding site collection to sites list: {0}", nextSiteWithSlashAddedIfNeeded);
+              log.InfoFormat("Adding site collection to sites list: {0}", nextSiteWithSlashAddedIfNeeded);
               config.sites.Add(nextSiteWithSlashAddedIfNeeded);
             }  
           }
@@ -83,11 +84,13 @@ namespace SpPrefetchIndexBuilder {
         }
       }
       if (!isIncremental) {
+        Stopwatch swAll = Stopwatch.StartNew();
         foreach (string site in config.sites) {
           SpPrefetchIndexBuilder spib = new SpPrefetchIndexBuilder(site);
           spib.buildFullIndex();
           // todo check for incremental
         }
+        log.InfoFormat("Full export complete! Took {0} milliseconds to export {1} sites.", swAll.ElapsedMilliseconds, config.sites.Count);
       }
     }
 
@@ -106,8 +109,7 @@ namespace SpPrefetchIndexBuilder {
 
     public void buildFullIndex() {
       try {
-        Stopwatch swAll = Stopwatch.StartNew();
-        Console.WriteLine("Building full index for site {0}", rootSite);
+        log.InfoFormat("Building full index for site {0}", rootSite);
 
         Stopwatch swWeb = Stopwatch.StartNew();
         getWebs(rootSite, rootSite, null);
@@ -117,7 +119,7 @@ namespace SpPrefetchIndexBuilder {
           toFetchWeb => { FetchWeb(toFetchWeb); }
         );
         writeWebJson();
-        Console.WriteLine("Web fetch of {0} complete. Took {1} milliseconds.", rootSite, swWeb.ElapsedMilliseconds);
+        log.InfoFormat("Web fetch of {0} complete. Took {1} milliseconds.", rootSite, swWeb.ElapsedMilliseconds);
 
         if (!config.excludeLists) {
           Stopwatch swLists = Stopwatch.StartNew();
@@ -127,10 +129,10 @@ namespace SpPrefetchIndexBuilder {
             toFetchList => { FetchList(toFetchList); }
           );
           writeAllListsToJson();
-          Console.WriteLine("Lists metadata dump of {0} complete. Took {1} milliseconds.", 
+          log.InfoFormat("Lists metadata dump of {0} complete. Took {1} milliseconds.", 
                             rootSite, swLists.ElapsedMilliseconds);
           if (config.excludeFiles) {
-            Console.WriteLine("Downloading the files recieved during the index building");
+            log.InfoFormat("Downloading the files recieved during the index building");
             Parallel.ForEach(
               fileDownloadList,
               new ParallelOptions { MaxDegreeOfParallelism = config.numThreads },
@@ -138,9 +140,8 @@ namespace SpPrefetchIndexBuilder {
             );
           }
         }
-        Console.WriteLine("Export complete! Took {0} milliseconds.", swAll.ElapsedMilliseconds);
       } catch (Exception anyException) {
-        Console.WriteLine("Prefetch index building failed for site {0} due to {1}", rootSite, anyException);
+        log.ErrorFormat("Prefetch index building failed for site {0} due to {1}", rootSite, anyException);
         Environment.Exit(1);
       }
     }
@@ -152,7 +153,7 @@ namespace SpPrefetchIndexBuilder {
       newIncrementalDict.Add("changes", changesDict);
       string url = (string)previousIncrementalDict["Url"];
       DateTime fetchedDate = (DateTime)previousIncrementalDict["FetchedDate"];
-      Console.WriteLine("Incremental crawl running for URL {0} getting changes since {1}", url, TimeZoneInfo.ConvertTimeFromUtc(fetchedDate, TimeZoneInfo.Local));
+      log.InfoFormat("Incremental crawl running for URL {0} getting changes since {1}", url, TimeZoneInfo.ConvertTimeFromUtc(fetchedDate, TimeZoneInfo.Local));
       newIncrementalDict["FetchedDate"] = DateTime.UtcNow;
       SharepointChanges sharepointChanges = new SharepointChanges();
       ClientContext clientContext = getClientContext(url);
@@ -161,7 +162,7 @@ namespace SpPrefetchIndexBuilder {
       try {
         clientContext.ExecuteQuery();
       } catch (Exception ex) {
-        Console.WriteLine("Could not load site changes for {0} because of Error {1}", url, ex);
+        log.ErrorFormat("Could not load site changes for {0} because of Error {1}", url, ex);
         Environment.Exit(0);
       }
       ChangeCollection changeCollection = SharepointChanges.GetChanges(clientContext, site, fetchedDate);
@@ -177,7 +178,7 @@ namespace SpPrefetchIndexBuilder {
       try {
         clientContext.ExecuteQuery();
       } catch (Exception ex) {
-        Console.WriteLine("Could not load web changes for {0} because of Error {1}", url, ex);
+        log.ErrorFormat("Could not load web changes for {0} because of Error {1}", url, ex);
         Environment.Exit(0);
       }
       changeCollection = SharepointChanges.GetChanges(clientContext, web, fetchedDate);
@@ -193,13 +194,13 @@ namespace SpPrefetchIndexBuilder {
         if (maxTime > (DateTime)previousIncrementalDict["FetchedDate"]) {
           newIncrementalDict["FetchedDate"] = maxTime.AddSeconds(1);
         }
-        Console.WriteLine("Fetched changes for {0}. NumChangesFound={1}, MostRecentChange={2}, NextIncrementalTimestamp={3}",
+        log.InfoFormat("Fetched changes for {0}. NumChangesFound={1}, MostRecentChange={2}, NextIncrementalTimestamp={3}",
                           site.Url,
                           changesDict.Count,
                           TimeZoneInfo.ConvertTimeFromUtc(maxTime, TimeZoneInfo.Local),
                           TimeZoneInfo.ConvertTimeFromUtc((DateTime)previousIncrementalDict["FetchedDate"], TimeZoneInfo.Local));
       } else {
-        Console.WriteLine("No incremental changes found for {0}. Next incremental timestamp will be: {1}", site.Url, TimeZoneInfo.ConvertTimeFromUtc((DateTime)previousIncrementalDict["FetchedDate"], TimeZoneInfo.Local));
+        log.InfoFormat("No incremental changes found for {0}. Next incremental timestamp will be: {1}", site.Url, TimeZoneInfo.ConvertTimeFromUtc((DateTime)previousIncrementalDict["FetchedDate"], TimeZoneInfo.Local));
       }
       return newIncrementalDict;
     }
@@ -207,7 +208,7 @@ namespace SpPrefetchIndexBuilder {
 
     public void DownloadFile(FileToDownload toDownload) {
       if (config.maxFiles > 0 && fileCount++ >= config.maxFiles) {
-        Console.WriteLine("Not downloading file {0} because maxFiles limit of {1} has been reached.", 
+        log.InfoFormat("Not downloading file {0} because maxFiles limit of {1} has been reached.", 
                           toDownload.serverRelativeUrl, config.maxFiles);
         return;
       }
@@ -219,14 +220,14 @@ namespace SpPrefetchIndexBuilder {
               memStream.CopyTo(fileStream);
             }
           }
-          Console.WriteLine("Thread {0} - Successfully downloaded {1} to {2}", Thread.CurrentThread.ManagedThreadId, 
+          log.InfoFormat("Thread {0} - Successfully downloaded {1} to {2}", Thread.CurrentThread.ManagedThreadId, 
                             toDownload.serverRelativeUrl, toDownload.saveToPath);
         } else {
-          Console.WriteLine("Got non-OK status {0} when trying to download url {1}", responseResult.Result.StatusCode, 
+          log.ErrorFormat("Got non-OK status {0} when trying to download url {1}", responseResult.Result.StatusCode, 
                             rootSite + toDownload.serverRelativeUrl);
         }
       } catch (Exception e) {
-        Console.WriteLine("Gave up trying to download url {0}{1} to file {2} due to error: {3}", rootSite, 
+        log.ErrorFormat("Gave up trying to download url {0}{1} to file {2} due to error: {3}", rootSite, 
                           toDownload.serverRelativeUrl, toDownload.saveToPath, e);
       }
     }
@@ -235,7 +236,7 @@ namespace SpPrefetchIndexBuilder {
       CheckAbort();
       DateTime now = DateTime.UtcNow;
       string url = webToFetch.url;
-      Console.WriteLine("Thread {0} exporting web {1}", Thread.CurrentThread.ManagedThreadId, url);
+      log.InfoFormat("Thread {0} exporting web {1}", Thread.CurrentThread.ManagedThreadId, url);
       ClientContext clientContext = getClientContext(url);
 
       Web web = clientContext.Web;
@@ -262,7 +263,7 @@ namespace SpPrefetchIndexBuilder {
       try {
         clientContext.ExecuteQuery();
       } catch (Exception ex) {
-        Console.WriteLine("Could not load site {0} because of Error {1}", url, ex.Message);
+        log.ErrorFormat("Could not load site {0} because of Error {1}", url, ex.Message);
         return;
       }
 
@@ -368,7 +369,7 @@ namespace SpPrefetchIndexBuilder {
       foreach (List list in lists) {
         // All sites have a few lists that we don't care about exporting. Exclude these.
         if (ignoreListNames.Contains(list.Title)) {
-          //Console.WriteLine("Skipping built-in sharepoint list " + list.Title);
+          //log.InfoFormat("Skipping built-in sharepoint list " + list.Title);
           continue;
         }
         ListToFetch listToFetch = new ListToFetch();
@@ -394,7 +395,7 @@ namespace SpPrefetchIndexBuilder {
             lslist => lslist.Description, lslist => lslist.LastItemModifiedDate, lslist => lslist.RootFolder, 
                            lslist => lslist.DefaultDisplayFormUrl);
         clientContext.ExecuteQuery();
-        Console.WriteLine("Thread {0} - Parsing list site={1}, listID={2}, listTitle={3}", Thread.CurrentThread.ManagedThreadId, 
+        log.InfoFormat("Thread {0} - Parsing list site={1}, listID={2}, listTitle={3}", Thread.CurrentThread.ManagedThreadId, 
                           listToFetch.site, list.Id, list.Title);
         CamlQuery camlQuery = new CamlQuery();
         camlQuery.ViewXml = "<View Scope=\"RecursiveAll\"></View>";
@@ -415,7 +416,7 @@ namespace SpPrefetchIndexBuilder {
         try {
           clientContext.ExecuteQuery();
         } catch (Exception e) {
-          Console.WriteLine("Could not fetch listID=" + list.Id + ", listTitle=" + list.Title + " because of error " + e.Message);
+          log.ErrorFormat("Could not fetch listID=" + list.Id + ", listTitle=" + list.Title + " because of error " + e.Message);
           return;
         }
         Dictionary<string, object> listDict = new Dictionary<string, object>();
@@ -434,7 +435,7 @@ namespace SpPrefetchIndexBuilder {
           try {
             contentTypeName = listItem.ContentType.Name;
           } catch (Exception excep) {
-            Console.WriteLine("Couldn't get listItem.ContentType.Name for list item ListId={0}, ItemId={1}, DisplayName={2} due to {3}", list.Id, listItem.Id, listItem.DisplayName, excep);
+            log.ErrorFormat("Couldn't get listItem.ContentType.Name for list item ListId={0}, ItemId={1}, DisplayName={2} due to {3}", list.Id, listItem.Id, listItem.DisplayName, excep);
           }
           itemDict.Add("ContentTypeName", contentTypeName);
           if (contentTypeName.Equals("Document") && listItem.FieldValues.ContainsKey("FileRef")) {
@@ -469,7 +470,7 @@ namespace SpPrefetchIndexBuilder {
                         item => item.Member.PrincipalType,
                         item => item.RoleDefinitionBindings));
             clientContext.ExecuteQuery();
-            //Console.WriteLine("List Item {0} has unique role assignments: {1}", itemDict["Url"], listItem.RoleAssignments);
+            //log.InfoFormat("List Item {0} has unique role assignments: {1}", itemDict["Url"], listItem.RoleAssignments);
             SetRoleAssignments(listItem.RoleAssignments, itemDict);
           }
           itemDict.Add("FieldValues", listItem.FieldValues);
@@ -507,17 +508,16 @@ namespace SpPrefetchIndexBuilder {
                   item => item.RoleDefinitionBindings
           ));
           clientContext.ExecuteQuery();
-          //Console.WriteLine("List {0} has unique role assignments: {1}", listDict["Url"], list.RoleAssignments);
+          //log.InfoFormat("List {0} has unique role assignments: {1}", listDict["Url"], list.RoleAssignments);
           SetRoleAssignments(list.RoleAssignments, listDict);
         }
         if (listToFetch.listsDict.ContainsKey(list.Id.ToString())) {
-          Console.WriteLine("Duplicate key " + list.Id);
+          log.DebugFormat("Duplicate key " + list.Id);
         } else {
           listToFetch.listsDict.Add(list.Id.ToString(), listDict);
         }
       } catch (Exception e) {
-        Console.WriteLine("Got error trying to fetch list {0}: {1}", listToFetch.listId, e.Message);
-        Console.WriteLine(e.StackTrace);
+        log.ErrorFormat("Got error trying to fetch list {0}: {1}", listToFetch.listId, e);
       }
     }
 
@@ -554,7 +554,7 @@ namespace SpPrefetchIndexBuilder {
     public void writeAllListsToJson() {
       foreach (ListsOutput nextListOutput in listsOutput) {
         System.IO.File.WriteAllText(nextListOutput.jsonPath, config.serializer.Serialize(nextListOutput.listsDict));
-        Console.WriteLine("Exported list to {0}", nextListOutput.jsonPath);
+        log.InfoFormat("Exported list to {0}", nextListOutput.jsonPath);
       }
     }
 
@@ -566,7 +566,7 @@ namespace SpPrefetchIndexBuilder {
       try {
         clientContext.ExecuteQuery();
       } catch (Exception ex) {
-        Console.WriteLine("Could not load site {0} because of Error {1}", url, ex.Message);
+        log.ErrorFormat("Could not load site {0} because of Error {1}", url, ex.Message);
         return;
       }
       WebToFetch webToFetch = new WebToFetch();
