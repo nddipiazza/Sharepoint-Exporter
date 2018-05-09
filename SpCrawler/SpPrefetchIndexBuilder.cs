@@ -60,13 +60,45 @@ namespace SpPrefetchIndexBuilder {
           config.sites.AddRange(siteCollectionsUtil.GetAllSiteCollections());
         }
       }
+      bool isIncremental = false;
+      if (Directory.Exists(config.baseDir)) {
+        var myFiles = Directory.GetFiles(config.baseDir, "web*.json", SearchOption.AllDirectories);
+        isIncremental = myFiles.Length > 0;
+        foreach (var nextIncrementalFile in myFiles) {
+          string incrementalFileContents;
+          using (StreamReader reader = new StreamReader(nextIncrementalFile)) {
+            incrementalFileContents = reader.ReadToEnd();
+          }
+          Dictionary<string, object> previousIncrementalDict = (config.serializer.DeserializeObject(incrementalFileContents) as Dictionary<string, object>);
+          SpPrefetchIndexBuilder spib = new SpPrefetchIndexBuilder((string)previousIncrementalDict["Url"]);
+          Dictionary<string, object> newIncrementalDict = spib.buildIncrementalIndex(previousIncrementalDict);
+          System.IO.File.WriteAllText(nextIncrementalFile, config.serializer.Serialize(newIncrementalDict));
+        }
+      }
+      if (!isIncremental) {
+        foreach (string site in config.sites) {
+          SpPrefetchIndexBuilder spib = new SpPrefetchIndexBuilder(site);
+          spib.buildFullIndex();
+          // todo check for incremental
+        }
+      }
+    }
 
-      foreach (string site in config.sites) {
-        SpPrefetchIndexBuilder spib = new SpPrefetchIndexBuilder(site);
-        spib.buildFullIndex();
-        // todo check for incremental
+    public SpPrefetchIndexBuilder(string rootSite) {
+      this.rootSite = rootSite;
+
+      if (rootSite.EndsWith("/", StringComparison.CurrentCulture)) {
+        rootSite = rootSite.Substring(0, rootSite.Length - 1);
       }
 
+      cc = new CredentialCache();
+
+      cc.Add(new Uri(rootSite), "NTLM", config.networkCredentials);
+      HttpClientHandler handler = new HttpClientHandler();
+      handler.Credentials = cc;
+      client = new HttpClient(handler);
+      client.Timeout = TimeSpan.FromSeconds(30);
+      client.DefaultRequestHeaders.ConnectionClose = true;
     }
 
     public void buildFullIndex() {
@@ -110,22 +142,65 @@ namespace SpPrefetchIndexBuilder {
       }
     }
 
-    public SpPrefetchIndexBuilder(string rootSite) {
-      this.rootSite = rootSite;
-
-      if (rootSite.EndsWith("/", StringComparison.CurrentCulture)) {
-        rootSite = rootSite.Substring(0, rootSite.Length - 1);
+    public Dictionary<string, object> buildIncrementalIndex(Dictionary<string, object> previousIncrementalDict) {
+      Dictionary<string, object> newIncrementalDict = new Dictionary<string, object>();
+      newIncrementalDict.Add("Url", previousIncrementalDict["Url"]);
+      Dictionary<string, object> changesDict = new Dictionary<string, object>();
+      newIncrementalDict.Add("changes", changesDict);
+      string url = (string)previousIncrementalDict["Url"];
+      DateTime fetchedDate = (DateTime)previousIncrementalDict["FetchedDate"];
+      Console.WriteLine("Incremental crawl running for URL {0} getting changes since {1}", url, TimeZoneInfo.ConvertTimeFromUtc(fetchedDate, TimeZoneInfo.Local));
+      newIncrementalDict["FetchedDate"] = DateTime.UtcNow;
+      SharepointChanges sharepointChanges = new SharepointChanges();
+      ClientContext clientContext = getClientContext(url);
+      var site = clientContext.Site;
+      clientContext.Load(site, s => s.Id, s => s.Url);
+      try {
+        clientContext.ExecuteQuery();
+      } catch (Exception ex) {
+        Console.WriteLine("Could not load site changes for {0} because of Error {1}", url, ex);
+        Environment.Exit(0);
       }
-
-      cc = new CredentialCache();
-
-      cc.Add(new Uri(rootSite), "NTLM", config.networkCredentials);
-      HttpClientHandler handler = new HttpClientHandler();
-      handler.Credentials = cc;
-      client = new HttpClient(handler);
-      client.Timeout = TimeSpan.FromSeconds(30);
-      client.DefaultRequestHeaders.ConnectionClose = true;
+      ChangeCollection changeCollection = SharepointChanges.GetChanges(clientContext, site, fetchedDate);
+      DateTime maxTime = DateTime.MinValue;
+      foreach (Change change in changeCollection) {
+        SharepointChanges.AddChangeToIncrementalDict(changesDict, "site", site.Url, change);
+        if (change.Time.CompareTo(maxTime) > 0) {
+          maxTime = change.Time;
+        }
+      }
+      var web = clientContext.Web;
+      clientContext.Load(web, w => w.Id, w => w.ServerRelativeUrl);
+      try {
+        clientContext.ExecuteQuery();
+      } catch (Exception ex) {
+        Console.WriteLine("Could not load web changes for {0} because of Error {1}", url, ex);
+        Environment.Exit(0);
+      }
+      changeCollection = SharepointChanges.GetChanges(clientContext, web, fetchedDate);
+      foreach (Change change in changeCollection) {
+        SharepointChanges.AddChangeToIncrementalDict(changesDict, "web", web.ServerRelativeUrl, change);
+        if (change.Time.CompareTo(maxTime) > 0) {
+          maxTime = change.Time;
+        }
+      }
+      if (!DateTime.MinValue.Equals(maxTime)) {
+        // Sometimes the now time that we made the query is actually earlier than the max item timestamp we got. In that case, just take the max item timestamp + 1second as the next incremental timestamp to avoid refetching stuff we already had.
+        // This is due to some slight clock skew from client to sharepoint server. 
+        if (maxTime > (DateTime)previousIncrementalDict["FetchedDate"]) {
+          newIncrementalDict["FetchedDate"] = maxTime.AddSeconds(1);
+        }
+        Console.WriteLine("Fetched changes for {0}. NumChangesFound={1}, MostRecentChange={2}, NextIncrementalTimestamp={3}",
+                          site.Url,
+                          changesDict.Count,
+                          TimeZoneInfo.ConvertTimeFromUtc(maxTime, TimeZoneInfo.Local),
+                          TimeZoneInfo.ConvertTimeFromUtc((DateTime)previousIncrementalDict["FetchedDate"], TimeZoneInfo.Local));
+      } else {
+        Console.WriteLine("No incremental changes found for {0}. Next incremental timestamp will be: {1}", site.Url, TimeZoneInfo.ConvertTimeFromUtc((DateTime)previousIncrementalDict["FetchedDate"], TimeZoneInfo.Local));
+      }
+      return newIncrementalDict;
     }
+
 
     public void DownloadFile(FileToDownload toDownload) {
       if (config.maxFiles > 0 && fileCount++ >= config.maxFiles) {
@@ -155,7 +230,7 @@ namespace SpPrefetchIndexBuilder {
 
     public void FetchWeb(WebToFetch webToFetch) {
       CheckAbort();
-      DateTime now = DateTime.Now;
+      DateTime now = DateTime.UtcNow;
       string url = webToFetch.url;
       Console.WriteLine("Thread {0} exporting web {1}", Thread.CurrentThread.ManagedThreadId, url);
       ClientContext clientContext = getClientContext(url);
@@ -308,7 +383,7 @@ namespace SpPrefetchIndexBuilder {
     public void FetchList(ListToFetch listToFetch) {
       try {
         CheckAbort();
-        DateTime now = DateTime.Now;
+        DateTime now = DateTime.UtcNow;
         ClientContext clientContext = getClientContext(listToFetch.site);
         List list = clientContext.Web.Lists.GetById(listToFetch.listId);
         clientContext.Load(list, lslist => lslist.HasUniqueRoleAssignments, lslist => lslist.Id, 
