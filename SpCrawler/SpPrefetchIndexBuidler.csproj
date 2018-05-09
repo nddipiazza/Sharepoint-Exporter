@@ -95,6 +95,9 @@
     <Reference Include="Microsoft.SharePoint.Client.WorkflowServices">
       <HintPath>..\packages\Microsoft.SharePoint2013.CSOM.15.0.4711.1000\lib\net45\Microsoft.SharePoint.Client.WorkflowServices.dll</HintPath>
     </Reference>
+    <Reference Include="log4net">
+      <HintPath>..\packages\log4net.2.0.8\lib\net45-full\log4net.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="SpPrefetchIndexBuilder.cs" />
@@ -106,6 +109,7 @@
     <Compile Include="ListsOutput.cs" />
     <Compile Include="SharepointExporterConfig.cs" />
     <Compile Include="SiteCollectionsUtil.cs" />
+    <Compile Include="Util.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />

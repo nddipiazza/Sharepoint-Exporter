@@ -93,7 +93,7 @@ namespace SpPrefetchIndexBuilder {
         if (arg.StartsWith("--sitesFile=", StringComparison.CurrentCulture)) {
           sitesFilePath = arg.Split(new Char[] { '=' })[1];
         } else if (arg.StartsWith("--sharepointUrl=", StringComparison.CurrentCulture)) {
-          sites.Add(arg.Split(new Char[] { '=' })[1]);
+          sites.Add(Util.addSlashToUrlIfNeeded(arg.Split(new Char[] { '=' })[1]));
         } else if (arg.StartsWith("--outputDir=", StringComparison.CurrentCulture)) {
           baseDir = arg.Split(new Char[] { '=' })[1];
           customBaseDir = true;
@@ -148,7 +148,10 @@ namespace SpPrefetchIndexBuilder {
         }
         if (sitesFile != null && sitesFile.Exists) {
           foreach (string nextSite in File.ReadLines(sitesFile.FullName)) {
-            sites.Add(nextSite);
+            string nextSiteWithSlashAddedIfNeeded = Util.addSlashToUrlIfNeeded(nextSite);
+            if (!sites.Contains(nextSiteWithSlashAddedIfNeeded)) {
+              sites.Add(nextSiteWithSlashAddedIfNeeded);
+            }
           }
         }
       }

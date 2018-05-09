@@ -57,7 +57,14 @@ namespace SpPrefetchIndexBuilder {
           client.Timeout = TimeSpan.FromSeconds(30);
           client.DefaultRequestHeaders.ConnectionClose = true;
           SiteCollectionsUtil siteCollectionsUtil = new SiteCollectionsUtil(cc, config.sites[0]);
-          config.sites.AddRange(siteCollectionsUtil.GetAllSiteCollections());
+          foreach (string nextSite in siteCollectionsUtil.GetAllSiteCollections()) {
+            string nextSiteWithSlashAddedIfNeeded = Util.addSlashToUrlIfNeeded(nextSite);
+            if (!config.sites.Contains(nextSite)) {
+              Console.WriteLine("Adding site collection to sites list: {0}", nextSiteWithSlashAddedIfNeeded);
+              config.sites.Add(nextSiteWithSlashAddedIfNeeded);
+            }  
+          }
+
         }
       }
       bool isIncremental = false;
@@ -86,10 +93,6 @@ namespace SpPrefetchIndexBuilder {
 
     public SpPrefetchIndexBuilder(string rootSite) {
       this.rootSite = rootSite;
-
-      if (rootSite.EndsWith("/", StringComparison.CurrentCulture)) {
-        rootSite = rootSite.Substring(0, rootSite.Length - 1);
-      }
 
       cc = new CredentialCache();
 
@@ -431,7 +434,7 @@ namespace SpPrefetchIndexBuilder {
           try {
             contentTypeName = listItem.ContentType.Name;
           } catch (Exception excep) {
-            Console.WriteLine("Couldn't get listItem.ContentType.Name for list item {0} due to {1}", listItem.Id, excep.Message);
+            Console.WriteLine("Couldn't get listItem.ContentType.Name for list item ListId={0], ItemId={1}, DisplayName={2} due to {3}", list.Id, listItem.Id, listItem.DisplayName, excep);
           }
           itemDict.Add("ContentTypeName", contentTypeName);
           if (contentTypeName.Equals("Document") && listItem.FieldValues.ContainsKey("FileRef")) {
@@ -466,7 +469,7 @@ namespace SpPrefetchIndexBuilder {
                         item => item.Member.PrincipalType,
                         item => item.RoleDefinitionBindings));
             clientContext.ExecuteQuery();
-            Console.WriteLine("List Item {0} has unique role assignments: {1}", itemDict["Url"], listItem.RoleAssignments);
+            //Console.WriteLine("List Item {0} has unique role assignments: {1}", itemDict["Url"], listItem.RoleAssignments);
             SetRoleAssignments(listItem.RoleAssignments, itemDict);
           }
           itemDict.Add("FieldValues", listItem.FieldValues);
@@ -504,7 +507,7 @@ namespace SpPrefetchIndexBuilder {
                   item => item.RoleDefinitionBindings
           ));
           clientContext.ExecuteQuery();
-          Console.WriteLine("List {0} has unique role assignments: {1}", listDict["Url"], list.RoleAssignments);
+          //Console.WriteLine("List {0} has unique role assignments: {1}", listDict["Url"], list.RoleAssignments);
           SetRoleAssignments(list.RoleAssignments, listDict);
         }
         if (listToFetch.listsDict.ContainsKey(list.Id.ToString())) {
