@@ -104,6 +104,8 @@
     <Compile Include="ListToFetch.cs" />
     <Compile Include="FileToDownload.cs" />
     <Compile Include="ListsOutput.cs" />
+    <Compile Include="SharepointExporterConfig.cs" />
+    <Compile Include="SiteCollectionsUtil.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
