@@ -121,9 +121,6 @@
     <None Include="App.config" />
     <None Include="packages.config" />
     <None Include="sites.txt" />
-    <None Include="log4net.config">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
   <ItemGroup>
     <BootstrapperPackage Include=".NETFramework,Version=v4.6.1">
