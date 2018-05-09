@@ -208,6 +208,7 @@ namespace SpPrefetchIndexBuilder {
 
 
     public void DownloadFile(FileToDownload toDownload) {
+      Thread.CurrentThread.Name = "DownloadFile" + Thread.CurrentThread.ManagedThreadId;
       if (config.maxFiles > 0 && fileCount++ >= config.maxFiles) {
         log.InfoFormat("Not downloading file {0} because maxFiles limit of {1} has been reached.", 
                           toDownload.serverRelativeUrl, config.maxFiles);
@@ -221,8 +222,7 @@ namespace SpPrefetchIndexBuilder {
               memStream.CopyTo(fileStream);
             }
           }
-          log.InfoFormat("Thread {0} - Successfully downloaded {1} to {2}", Thread.CurrentThread.ManagedThreadId, 
-                            toDownload.serverRelativeUrl, toDownload.saveToPath);
+          log.InfoFormat("Successfully downloaded {0} to {1}", toDownload.serverRelativeUrl, toDownload.saveToPath);
         } else {
           log.ErrorFormat("Got non-OK status {0} when trying to download url {1}", responseResult.Result.StatusCode, 
                             rootSite + toDownload.serverRelativeUrl);
@@ -234,10 +234,11 @@ namespace SpPrefetchIndexBuilder {
     }
 
     public void FetchWeb(WebToFetch webToFetch) {
+      Thread.CurrentThread.Name = "FetchWeb" + Thread.CurrentThread.ManagedThreadId;
       CheckAbort();
       DateTime now = DateTime.UtcNow;
       string url = webToFetch.url;
-      log.InfoFormat("Thread {0} exporting web {1}", Thread.CurrentThread.ManagedThreadId, url);
+      log.InfoFormat("Fetching web {0}", url);
       ClientContext clientContext = getClientContext(url);
 
       Web web = clientContext.Web;
@@ -387,6 +388,7 @@ namespace SpPrefetchIndexBuilder {
 
     public void FetchList(ListToFetch listToFetch) {
       try {
+        Thread.CurrentThread.Name = "FetchList-" + Thread.CurrentThread.ManagedThreadId;
         CheckAbort();
         DateTime now = DateTime.UtcNow;
         ClientContext clientContext = getClientContext(listToFetch.site);
@@ -396,8 +398,7 @@ namespace SpPrefetchIndexBuilder {
             lslist => lslist.Description, lslist => lslist.LastItemModifiedDate, lslist => lslist.RootFolder, 
                            lslist => lslist.DefaultDisplayFormUrl);
         clientContext.ExecuteQuery();
-        log.InfoFormat("Thread {0} - Parsing list site={1}, listID={2}, listTitle={3}", Thread.CurrentThread.ManagedThreadId, 
-                          listToFetch.site, list.Id, list.Title);
+        log.InfoFormat("Parsing list site={0}, listID={1}, listTitle={2}", listToFetch.site, list.Id, list.Title);
         CamlQuery camlQuery = new CamlQuery();
         camlQuery.ViewXml = "<View Scope=\"RecursiveAll\"></View>";
         ListItemCollection collListItem = list.GetItems(camlQuery);
