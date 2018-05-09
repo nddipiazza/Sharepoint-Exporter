@@ -7,7 +7,9 @@ using System.Text;
 using System.Web.Script.Serialization;
 
 namespace SpPrefetchIndexBuilder {
+  
   public class SharepointExporterConfig {
+    private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
     public List<string> sites = new List<string>();
     public List<string> ignoreListNames = new List<string>();
@@ -126,7 +128,7 @@ namespace SpPrefetchIndexBuilder {
         } else if (arg.StartsWith("--excludeFiles=", StringComparison.CurrentCulture)) {
           excludeFiles = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
         } else {
-          Console.WriteLine("ERROR - Unrecognized argument {0}.", arg);
+          log.ErrorFormat("ERROR - Unrecognized argument {0}.", arg);
           help = true;
         }
       }
@@ -143,7 +145,7 @@ namespace SpPrefetchIndexBuilder {
       if (sitesFilePath != null) {
         FileInfo sitesFile = new FileInfo(sitesFilePath);
         if (!sitesFile.Exists) {
-          Console.WriteLine("Error - sites file {0} doesn't exist", sitesFilePath);
+          log.ErrorFormat("Error - sites file {0} doesn't exist", sitesFilePath);
           Environment.Exit(1);
         }
         if (sitesFile != null && sitesFile.Exists) {
