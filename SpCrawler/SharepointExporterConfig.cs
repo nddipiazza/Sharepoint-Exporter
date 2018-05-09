@@ -10,8 +10,8 @@ namespace SpPrefetchIndexBuilder {
   
   public class SharepointExporterConfig {
     private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
-    public const string AUTH_SCHEME = "NTLM";
 
+    public string authScheme = "NTLM";
     public List<string> sites = new List<string>();
     public List<string> ignoreListNames = new List<string>();
     public string baseDir = null;
@@ -103,6 +103,8 @@ namespace SpPrefetchIndexBuilder {
           customBaseDir = true;
         } else if (arg.StartsWith("--deleteExistingOutputDir=", StringComparison.CurrentCulture)) {
           deleteExistingOutputDir = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
+        } else if (arg.StartsWith("--authScheme=", StringComparison.CurrentCulture)) {
+          authScheme = arg.Split(new Char[] { '=' })[1];
         } else if (arg.StartsWith("--domain=", StringComparison.CurrentCulture)) {
           spDomain = arg.Split(new Char[] { '=' })[1];
         } else if (arg.StartsWith("--username=", StringComparison.CurrentCulture)) {

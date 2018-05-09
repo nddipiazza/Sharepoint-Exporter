@@ -102,12 +102,12 @@ namespace SpPrefetchIndexBuilder {
       this.rootSite = rootSite;
 
       csomCredentialsCache = new CredentialCache();
-      csomCredentialsCache.Add(new Uri(rootSite), SharepointExporterConfig.AUTH_SCHEME, config.networkCredentials);
+      csomCredentialsCache.Add(new Uri(rootSite), config.authScheme, config.networkCredentials);
 
-      CredentialCache credentialCache = new CredentialCache { { Util.getBaseUrlHost(rootSite), Util.getBaseUrlPort(rootSite), SharepointExporterConfig.AUTH_SCHEME, config.networkCredentials } };
+      CredentialCache credentialCache = new CredentialCache { { Util.getBaseUrlHost(rootSite), Util.getBaseUrlPort(rootSite), config.authScheme, config.networkCredentials } };
       var httpHandler = new HttpClientHandler() {
         CookieContainer = new CookieContainer(),
-        Credentials = credentialCache.GetCredential(Util.getBaseUrlHost(rootSite), Util.getBaseUrlPort(rootSite), SharepointExporterConfig.AUTH_SCHEME)
+        Credentials = credentialCache.GetCredential(Util.getBaseUrlHost(rootSite), Util.getBaseUrlPort(rootSite), config.authScheme)
       };
       httpClient = new HttpClient(httpHandler);
       httpClient.Timeout = TimeSpan.FromSeconds(config.fileDownloadTimeoutSecs);
