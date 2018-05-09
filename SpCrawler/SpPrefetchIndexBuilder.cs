@@ -208,7 +208,10 @@ namespace SpPrefetchIndexBuilder {
 
 
     public void DownloadFile(FileToDownload toDownload) {
-      Thread.CurrentThread.Name = "DownloadFile" + Thread.CurrentThread.ManagedThreadId;
+      try {
+        Thread.CurrentThread.Name = "DownloadFile" + Thread.CurrentThread.ManagedThreadId;
+      } catch (Exception ignore) {
+      }
       if (config.maxFiles > 0 && fileCount++ >= config.maxFiles) {
         log.InfoFormat("Not downloading file {0} because maxFiles limit of {1} has been reached.", 
                           toDownload.serverRelativeUrl, config.maxFiles);
@@ -234,7 +237,10 @@ namespace SpPrefetchIndexBuilder {
     }
 
     public void FetchWeb(WebToFetch webToFetch) {
-      Thread.CurrentThread.Name = "FetchWeb" + Thread.CurrentThread.ManagedThreadId;
+      try {
+        Thread.CurrentThread.Name = "FetchWeb" + Thread.CurrentThread.ManagedThreadId;
+      } catch (Exception ignore) {
+      }
       CheckAbort();
       DateTime now = DateTime.UtcNow;
       string url = webToFetch.url;
@@ -388,7 +394,10 @@ namespace SpPrefetchIndexBuilder {
 
     public void FetchList(ListToFetch listToFetch) {
       try {
-        Thread.CurrentThread.Name = "FetchList-" + Thread.CurrentThread.ManagedThreadId;
+        try {
+          Thread.CurrentThread.Name = "FetchList" + Thread.CurrentThread.ManagedThreadId;
+        } catch (Exception ignore) {
+        }
         CheckAbort();
         DateTime now = DateTime.UtcNow;
         ClientContext clientContext = getClientContext(listToFetch.site);
