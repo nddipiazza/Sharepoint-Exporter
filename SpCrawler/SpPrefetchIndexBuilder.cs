@@ -13,30 +13,6 @@ using System.IO;
 using System.Text;
 
 namespace SpPrefetchIndexBuilder {
-
-  class WebToFetch {
-    public String url;
-    public String rootLevelSiteUrl;
-    public Dictionary<string, object> webDict;
-    public bool isRootLevelSite;
-  }
-
-  class ListToFetch {
-    public String site;
-    public Guid listId;
-    public Dictionary<string, object> listsDict = new Dictionary<string, object>();
-  }
-
-  class FileToDownload {
-    public String serverRelativeUrl;
-    public String saveToPath;
-  }
-
-  class ListsOutput {
-    public String jsonPath;
-    public Dictionary<string, object> listsDict;
-  }
-
   class SpPrefetchIndexBuilder {
     public static string baseDir = null;
     public static FileInfo incrementalFile = null;
@@ -223,15 +199,16 @@ namespace SpPrefetchIndexBuilder {
         if (arg.Equals("--help") || arg.Equals("-help") || arg.Equals("/help")) {
           help = true;
           break;
-        } else if (arg.StartsWith("--incrementalFile=", StringComparison.CurrentCulture)) {
-          incrementalFilePath = arg.Split(new Char[] { '=' })[1];
-        } else if (arg.StartsWith("--sitesFile=", StringComparison.CurrentCulture)) {
+        } 
+        if (arg.StartsWith("--sitesFile=", StringComparison.CurrentCulture)) {
           sitesFilePath = arg.Split(new Char[] { '=' })[1];
         } else if (arg.StartsWith("--sharepointUrl=", StringComparison.CurrentCulture)) {
           rootLevelSiteUrl = arg.Split(new Char[] { '=' })[1];
         } else if (arg.StartsWith("--outputDir=", StringComparison.CurrentCulture)) {
           baseDir = arg.Split(new Char[] { '=' })[1];
           customBaseDir = true;
+        } else if (arg.StartsWith("--deleteExistingOutputDir=", StringComparison.CurrentCulture)) {
+          deleteExistingOutputDir = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
         } else if (arg.StartsWith("--domain=", StringComparison.CurrentCulture)) {
           spDomain = arg.Split(new Char[] { '=' })[1];
         } else if (arg.StartsWith("--username=", StringComparison.CurrentCulture)) {
@@ -258,8 +235,6 @@ namespace SpPrefetchIndexBuilder {
           excludeRoleDefinitions = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
         } else if (arg.StartsWith("--excludeFiles=", StringComparison.CurrentCulture)) {
           excludeFiles = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
-        } else if (arg.StartsWith("--deleteExistingOutputDir=", StringComparison.CurrentCulture)) {
-          deleteExistingOutputDir = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
         } else {
           Console.WriteLine("ERROR - Unrecognized argument {0}.", arg);
           help = true;
