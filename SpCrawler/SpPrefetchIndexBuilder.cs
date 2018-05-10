@@ -14,21 +14,19 @@ namespace SpPrefetchIndexBuilder {
     static readonly ILog log = LogManager.GetLogger(typeof(SpPrefetchIndexBuilder));
 
     public static SharepointExporterConfig config;
-    public static void CheckAbort() {
-      if (System.IO.File.Exists(config.baseDir + Path.DirectorySeparatorChar + ".." + Path.DirectorySeparatorChar + ".doabort")) {
-        log.WarnFormat("The .doabort file was found. Stopping program");
-        Environment.Exit(0);
-      }
-    }
     public static int fileCount = 0;
     public string rootSite;
+    public string[] incrementalFiles;
     public static HttpClient httpClient;
     public CredentialCache csomCredentialsCache = null;
+    public List<ChangeToFetch> changeFetchList = new List<ChangeToFetch>();
     public List<ListToFetch> listFetchList = new List<ListToFetch>();
     public List<WebToFetch> webFetchList = new List<WebToFetch>();
-    public List<FileToDownload> fileDownloadList = new List<FileToDownload>();
+    public List<FileToFetch> fileFetchList = new List<FileToFetch>();
     public Dictionary<string, object> rootWebDict;
     public List<ListsOutput> listsOutput = new List<ListsOutput>();
+    public List<IncrementalFileOutput> incrementalFileOutputs = new List<IncrementalFileOutput>();
+    SharepointChanges sharepointChanges = new SharepointChanges();
 
     public List<string> ignoreListNames = new List<string>();
 
@@ -36,7 +34,7 @@ namespace SpPrefetchIndexBuilder {
       ThreadContext.Properties["threadid"] = "Main";
       config = new SharepointExporterConfig(args);
       if (config.customBaseDir && config.deleteExistingOutputDir && Directory.Exists(config.baseDir)) {
-        deleteDirectory(config.baseDir);
+        Util.deleteDirectory(config.baseDir);
       }
       Directory.CreateDirectory(config.baseDir);
       if (!config.excludeLists) {
@@ -67,32 +65,25 @@ namespace SpPrefetchIndexBuilder {
             if (!config.sites.Contains(nextSite)) {
               log.InfoFormat("Adding site collection to sites list: {0}", nextSiteWithSlashAddedIfNeeded);
               config.sites.Add(nextSiteWithSlashAddedIfNeeded);
-            }  
+            }
           }
           soapHttpClient.Dispose();
         }
       }
       bool isIncremental = false;
       if (Directory.Exists(config.baseDir)) {
-        var myFiles = Directory.GetFiles(config.baseDir, "web*.json", SearchOption.AllDirectories);
-        isIncremental = myFiles.Length > 0;
-        foreach (var nextIncrementalFile in myFiles) {
-          string incrementalFileContents;
-          using (StreamReader reader = new StreamReader(nextIncrementalFile)) {
-            incrementalFileContents = reader.ReadToEnd();
-          }
-          Dictionary<string, object> previousIncrementalDict = (config.serializer.DeserializeObject(incrementalFileContents) as Dictionary<string, object>);
-          SpPrefetchIndexBuilder spib = new SpPrefetchIndexBuilder((string)previousIncrementalDict["Url"]);
-          Dictionary<string, object> newIncrementalDict = spib.buildIncrementalIndex(previousIncrementalDict);
-          System.IO.File.WriteAllText(nextIncrementalFile, config.serializer.Serialize(newIncrementalDict));
-        }
+        string[] incrementalFiles = Directory.GetFiles(config.baseDir, "web*.json", SearchOption.AllDirectories);
+        isIncremental = incrementalFiles.Length > 0;
+
+        SpPrefetchIndexBuilder spib = new SpPrefetchIndexBuilder(incrementalFiles);
+        spib.BuildIncrementalIndex();
+
       }
       if (!isIncremental) {
         Stopwatch swAll = Stopwatch.StartNew();
         foreach (string site in config.sites) {
           SpPrefetchIndexBuilder spib = new SpPrefetchIndexBuilder(site);
           spib.buildFullIndex();
-          // todo check for incremental
         }
         log.InfoFormat("Full export complete! Took {0} milliseconds to export {1} sites.", swAll.ElapsedMilliseconds, config.sites.Count);
       }
@@ -100,7 +91,16 @@ namespace SpPrefetchIndexBuilder {
 
     public SpPrefetchIndexBuilder(string rootSite) {
       this.rootSite = rootSite;
+      init(rootSite);
+    }
 
+    public SpPrefetchIndexBuilder(string[] incrementalFiles) {
+      this.incrementalFiles = incrementalFiles;
+      rootSite = config.sites[0];
+      init(rootSite);
+    }
+
+    void init(string rootSite) {
       csomCredentialsCache = new CredentialCache();
       csomCredentialsCache.Add(new Uri(rootSite), config.authScheme, config.networkCredentials);
 
@@ -118,13 +118,13 @@ namespace SpPrefetchIndexBuilder {
         log.InfoFormat("Building full index for site {0}", rootSite);
 
         Stopwatch swWeb = Stopwatch.StartNew();
-        getWebs(rootSite, rootSite, null);
+        GetWebs(rootSite, rootSite, null);
         Parallel.ForEach(
           webFetchList,
           new ParallelOptions { MaxDegreeOfParallelism = config.numThreads },
           toFetchWeb => { FetchWeb(toFetchWeb); }
         );
-        writeWebJson();
+        WriteWebJson();
         log.InfoFormat("Web fetch of {0} complete. Took {1} milliseconds.", rootSite, swWeb.ElapsedMilliseconds);
 
         if (!config.excludeLists) {
@@ -134,15 +134,15 @@ namespace SpPrefetchIndexBuilder {
             new ParallelOptions { MaxDegreeOfParallelism = config.numThreads },
             toFetchList => { FetchList(toFetchList); }
           );
-          writeAllListsToJson();
+          WriteAllListsToJson();
           log.InfoFormat("Lists metadata dump of {0} complete. Took {1} milliseconds.",
                             rootSite, swLists.ElapsedMilliseconds);
           if (!config.excludeFiles) {
-            log.InfoFormat("Downloading the files recieved during the index building");
+            log.InfoFormat("Fetching the files recieved during the index building");
             Parallel.ForEach(
-              fileDownloadList,
+              fileFetchList,
               new ParallelOptions { MaxDegreeOfParallelism = config.numThreads },
-              toDownload => { DownloadFile(toDownload); }
+              toFetchFile => { FetchFile(toFetchFile); }
             );
           } else {
             log.Info("Not fetching files because they are --excludeFiles=true");
@@ -156,17 +156,84 @@ namespace SpPrefetchIndexBuilder {
       }
     }
 
-    public Dictionary<string, object> buildIncrementalIndex(Dictionary<string, object> previousIncrementalDict) {
+    public void BuildIncrementalIndex() {
+      foreach (string incrementalFile in incrementalFiles) {
+        ChangeToFetch changeToFetch = new ChangeToFetch();
+        changeToFetch.incrementalFilePath = incrementalFile;
+        changeFetchList.Add(changeToFetch);  
+      }
+      log.Info("Fetching incremental changes.");
+      Parallel.ForEach(
+        changeFetchList,
+        new ParallelOptions { MaxDegreeOfParallelism = config.numThreads },
+        toFetchChange => { FetchChanges(toFetchChange); }
+      );
+      log.Info("Done fetching incremental changes. Processing each change.");
+      Parallel.ForEach(
+        sharepointChanges.changeOutputs,
+        new ParallelOptions { MaxDegreeOfParallelism = config.numThreads },
+        toProcessChangeOutput => { ProcessChange(toProcessChangeOutput); }
+      );
+      log.InfoFormat("Fetching the files recieved from processing changes.");
+      Parallel.ForEach(
+        fileFetchList,
+        new ParallelOptions { MaxDegreeOfParallelism = config.numThreads },
+        toFetchFile => { FetchFile(toFetchFile); }
+      );
+      log.Info("Done processing changes. Writing changes to output json files.");
+      foreach (IncrementalFileOutput incrementalFileOutput in incrementalFileOutputs) {
+        System.IO.File.WriteAllText(incrementalFileOutput.incrementalFilePath, config.serializer.Serialize(incrementalFileOutput.dict));
+        log.InfoFormat("Wrote incremental file {0}", incrementalFileOutput.incrementalFilePath);
+      }
+    }
+
+    void ProcessChange(ChangeOutput changeOutput) {
+      ThreadContext.Properties["threadid"] = "ProcessChange" + Thread.CurrentThread.ManagedThreadId;
+      if (changeOutput.change is ChangeItem) {
+        ChangeItem changeItem = (ChangeItem)changeOutput.change;
+        if (changeItem.ChangeType == ChangeType.Add || changeItem.ChangeType == ChangeType.Update) {
+          Guid listId = changeItem.ListId;
+          int itemId = changeItem.ItemId;
+          ClientContext clientContext = getClientContext(changeOutput.site);
+          var list = clientContext.Web.Lists.GetById(listId);
+          ListItem listItem = list.GetItemById(itemId);
+          clientContext.Load(list, lsList => lsList.Id, lsList => lsList.DefaultDisplayFormUrl);
+          clientContext.Load(listItem, item => item.Id,
+                             item => item.DisplayName,
+                             item => item.HasUniqueRoleAssignments,
+                             item => item.Folder,
+                             item => item.File,
+                             item => item.ContentType);
+          clientContext.ExecuteQuery();
+          changeOutput.changeDict["ListItem"] = EmitListItem(clientContext, changeOutput.site, list, listItem);
+        }
+      }
+    }
+
+    public void FetchChanges(ChangeToFetch changeToFetch) {
+      ThreadContext.Properties["threadid"] = "FetchChange" + Thread.CurrentThread.ManagedThreadId;
+      string incrementalFileContents;
+      using (StreamReader reader = new StreamReader(changeToFetch.incrementalFilePath)) {
+        incrementalFileContents = reader.ReadToEnd();
+      }
+      Dictionary<string, object> previousIncrementalDict = (config.serializer.DeserializeObject(incrementalFileContents) as Dictionary<string, object>);
+      IncrementalFileOutput incrementalFileOutput = new IncrementalFileOutput();
+      incrementalFileOutput.dict = FetchWebChanges(previousIncrementalDict);
+      incrementalFileOutput.incrementalFilePath = changeToFetch.incrementalFilePath;
+      incrementalFileOutputs.Add(incrementalFileOutput);
+    }
+
+    public Dictionary<string, object> FetchWebChanges(Dictionary<string, object> previousIncrementalDict) {
+      string url = (string)previousIncrementalDict["Url"];
       Dictionary<string, object> newIncrementalDict = new Dictionary<string, object>();
-      newIncrementalDict.Add("Url", previousIncrementalDict["Url"]);
+      newIncrementalDict.Add("Url", url);
 
       Dictionary<string, object> changesDict = new Dictionary<string, object>();
       newIncrementalDict.Add("changes", changesDict);
-      string url = (string)previousIncrementalDict["Url"];
+
       DateTime fetchedDate = (DateTime)previousIncrementalDict["FetchedDate"];
       log.InfoFormat("Processing incremental changes for URL {0} getting changes since {1}", url, TimeZoneInfo.ConvertTimeFromUtc(fetchedDate, TimeZoneInfo.Local));
       newIncrementalDict["FetchedDate"] = DateTime.UtcNow;
-      SharepointChanges sharepointChanges = new SharepointChanges();
       ClientContext clientContext = getClientContext(url);
       var site = clientContext.Site;
       clientContext.Load(site, s => s.Id, s => s.Url);
@@ -178,12 +245,12 @@ namespace SpPrefetchIndexBuilder {
       }
       ChangeCollection changeCollection = SharepointChanges.GetChanges(clientContext, site, fetchedDate);
       DateTime maxTime = DateTime.MinValue;
-      foreach (Change change in changeCollection) {
-        SharepointChanges.AddChangeToIncrementalDict(changesDict, "site", site.Url, change);
-        if (change.Time.CompareTo(maxTime) > 0) {
-          maxTime = change.Time;
-        }
-      }
+      //foreach (Change change in changeCollection) {
+      //  sharepointChanges.AddChangeToIncrementalDict(changesDict, "site", site.Url, change);
+      //  if (change.Time.CompareTo(maxTime) > 0) {
+      //    maxTime = change.Time;
+      //  }
+      //}
       var web = clientContext.Web;
       clientContext.Load(web, w => w.Id, w => w.ServerRelativeUrl);
       try {
@@ -194,7 +261,7 @@ namespace SpPrefetchIndexBuilder {
       }
       changeCollection = SharepointChanges.GetChanges(clientContext, web, fetchedDate);
       foreach (Change change in changeCollection) {
-        SharepointChanges.AddChangeToIncrementalDict(changesDict, "web", web.ServerRelativeUrl, change);
+        sharepointChanges.AddChangeToIncrementalDict(changesDict, "web", Util.getBaseUrl(clientContext.Site.Url) + web.ServerRelativeUrl, change);
         if (change.Time.CompareTo(maxTime) > 0) {
           maxTime = change.Time;
         }
@@ -220,7 +287,7 @@ namespace SpPrefetchIndexBuilder {
         if (previousSubWebs.Count > 0) {
           log.InfoFormat("Web {0} has {1} subwebs. Processing them recursively.", previousIncrementalDict["Url"], previousSubWebs.Count);
           foreach (string subWebUrl in previousSubWebs.Keys) {
-            newSubWebs.Add(subWebUrl, buildIncrementalIndex((Dictionary<string, object>)previousSubWebs[subWebUrl]));
+            newSubWebs.Add(subWebUrl, FetchWebChanges((Dictionary<string, object>)previousSubWebs[subWebUrl]));
           }
         }
         newIncrementalDict.Add("SubWebs", newSubWebs);
@@ -228,30 +295,29 @@ namespace SpPrefetchIndexBuilder {
       return newIncrementalDict;
     }
 
-
-    public void DownloadFile(FileToDownload toDownload) {
+    public void FetchFile(FileToFetch toFetchFile) {
       ThreadContext.Properties["threadid"] = "FileThread" + Thread.CurrentThread.ManagedThreadId;
 
       if (config.maxFiles > 0 && fileCount++ >= config.maxFiles) {
         log.InfoFormat("Not downloading file {0} because maxFiles limit of {1} has been reached.", 
-                          toDownload.serverRelativeUrl, config.maxFiles);
+                          toFetchFile.serverRelativeUrl, config.maxFiles);
         return;
       }
-      string nextFileUrl = Util.getBaseUrl(rootSite) + toDownload.serverRelativeUrl;
+      string nextFileUrl = Util.getBaseUrl(rootSite) + toFetchFile.serverRelativeUrl;
       try {
         var responseResult = httpClient.GetAsync(nextFileUrl);
         if (responseResult.Result != null && responseResult.Result.StatusCode == HttpStatusCode.OK) {
           using (var memStream = responseResult.Result.Content.ReadAsStreamAsync().GetAwaiter().GetResult()) {
-            using (var fileStream = System.IO.File.Create(toDownload.saveToPath)) {
+            using (var fileStream = System.IO.File.Create(toFetchFile.saveToPath)) {
               memStream.CopyTo(fileStream);
             }
           }
-          log.InfoFormat("Successfully downloaded {0} to {1}", nextFileUrl, toDownload.saveToPath);
+          log.InfoFormat("Successfully downloaded {0} to {1}", nextFileUrl, toFetchFile.saveToPath);
         } else {
           log.ErrorFormat("Got non-OK status {0} when trying to download url {1}", responseResult.Result.StatusCode, nextFileUrl);
         }
       } catch (Exception e) {
-        log.ErrorFormat("Gave up trying to download url {0} to file {1} due to error: {2}", nextFileUrl, toDownload.saveToPath, e);
+        log.ErrorFormat("Gave up trying to download url {0} to file {1} due to error: {2}", nextFileUrl, toFetchFile.saveToPath, e);
       }
     }
 
@@ -453,72 +519,7 @@ namespace SpPrefetchIndexBuilder {
         listDict.Add("FetchedDate", now);
         List<Dictionary<string, object>> itemsList = new List<Dictionary<string, object>>();
         foreach (ListItem listItem in collListItem) {
-          Dictionary<string, object> itemDict = new Dictionary<string, object>();
-          itemDict.Add("DisplayName", listItem.DisplayName);
-          itemDict.Add("Id", listItem.Id);
-          string contentTypeName = "";
-          try {
-            contentTypeName = listItem.ContentType.Name;
-          } catch (Exception excep) {
-            log.ErrorFormat("On site {0} could not get listItem.ContentType.Name for list item ListId={1}, ItemId={2}, DisplayName={3} due to {4}", listToFetch.site, list.Id, listItem.Id, listItem.DisplayName, excep);
-          }
-          itemDict.Add("ContentTypeName", contentTypeName);
-          if (contentTypeName.Equals("Document") && listItem.FieldValues.ContainsKey("FileRef")) {
-            itemDict.Add("Url", rootSite + listItem["FileRef"]);
-          } else {
-            itemDict.Add("Url", rootSite + list.DefaultDisplayFormUrl + string.Format("?ID={0}", listItem.Id));
-          }
-          if (listItem.File.ServerObjectIsNull == false) {
-            itemDict.Add("TimeLastModified", listItem.File.TimeLastModified.ToString());
-            itemDict.Add("ListItemType", "List_Item");
-            if (config.maxFileSizeBytes < 0 || listItem.FieldValues.ContainsKey("File_x0020_Size") == false || 
-                int.Parse((string)listItem.FieldValues["File_x0020_Size"]) < config.maxFileSizeBytes) {
-              string filePath = config.baseDir + Path.DirectorySeparatorChar + "files" + Path.DirectorySeparatorChar + 
-                                              Guid.NewGuid().ToString() + Path.GetExtension(listItem.File.Name);
-              FileToDownload toDownload = new FileToDownload();
-              toDownload.saveToPath = filePath;
-              toDownload.serverRelativeUrl = listItem.File.ServerRelativeUrl;
-              fileDownloadList.Add(toDownload);
-              itemDict.Add("ExportPath", filePath);
-            }
-          } else if (listItem.Folder.ServerObjectIsNull == false) {
-            itemDict.Add("ListItemType", "Folder");
-          } else {
-            itemDict.Add("ListItemType", "List_Item");
-          }
-          if (listItem.HasUniqueRoleAssignments) {
-            clientContext.Load(listItem.RoleAssignments,
-                ras => ras.Include(
-                        item => item.PrincipalId,
-                        item => item.Member.LoginName,
-                        item => item.Member.Title,
-                        item => item.Member.PrincipalType,
-                        item => item.RoleDefinitionBindings));
-            clientContext.ExecuteQuery();
-            //log.InfoFormat("List Item {0} has unique role assignments: {1}", itemDict["Url"], listItem.RoleAssignments);
-            SetRoleAssignments(listItem.RoleAssignments, itemDict);
-          }
-          itemDict.Add("FieldValues", listItem.FieldValues);
-          if (listItem.FieldValues.ContainsKey("Attachments") && (bool)listItem.FieldValues["Attachments"]) {
-            clientContext.Load(listItem.AttachmentFiles);
-            clientContext.ExecuteQuery();
-            List<Dictionary<string, object>> attachmentFileList = new List<Dictionary<string, object>>();
-            foreach (Attachment attachmentFile in listItem.AttachmentFiles) {
-              Dictionary<string, object> attachmentFileDict = new Dictionary<string, object>();
-              attachmentFileDict.Add("Url", rootSite + attachmentFile.ServerRelativeUrl);
-              string filePath = config.baseDir + Path.DirectorySeparatorChar + "files" + Path.DirectorySeparatorChar + 
-                                              Guid.NewGuid().ToString() + Path.GetExtension(attachmentFile.FileName);
-              FileToDownload toDownload = new FileToDownload();
-              toDownload.saveToPath = filePath;
-              toDownload.serverRelativeUrl = attachmentFile.ServerRelativeUrl;
-              fileDownloadList.Add(toDownload);
-              attachmentFileDict.Add("ExportPath", filePath);
-              attachmentFileDict.Add("FileName", attachmentFile.FileName);
-              attachmentFileList.Add(attachmentFileDict);
-            }
-            itemDict.Add("AttachmentFiles", attachmentFileList);
-          }
-          itemsList.Add(itemDict);
+          itemsList.Add(EmitListItem(clientContext, listToFetch.site, list, listItem));
         }
         listDict.Add("Items", itemsList);
         listDict.Add("Url", rootSite + list.RootFolder.ServerRelativeUrl);
@@ -547,23 +548,76 @@ namespace SpPrefetchIndexBuilder {
       }
     }
 
-    public static void deleteDirectory(string targetDir) {
-      string[] files = Directory.GetFiles(targetDir);
-      string[] dirs = Directory.GetDirectories(targetDir);
-
-      foreach (string file in files) {
-        System.IO.File.SetAttributes(file, FileAttributes.Normal);
-        System.IO.File.Delete(file);
+    Dictionary<string, object> EmitListItem(ClientContext clientContext, string siteUrl, List parentList, ListItem listItem) {
+      Dictionary<string, object> itemDict = new Dictionary<string, object>();
+      itemDict.Add("DisplayName", listItem.DisplayName);
+      itemDict.Add("Id", listItem.Id);
+      string contentTypeName = "";
+      try {
+        contentTypeName = listItem.ContentType.Name;
+      } catch (Exception excep) {
+        log.ErrorFormat("On site {0} could not get listItem.ContentType.Name for list item ListId={1}, ItemId={2}, DisplayName={3} due to {4}", siteUrl, parentList.Id, listItem.Id, listItem.DisplayName, excep);
       }
-
-      foreach (string dir in dirs) {
-        deleteDirectory(dir);
+      itemDict.Add("ContentTypeName", contentTypeName);
+      if (contentTypeName.Equals("Document") && listItem.FieldValues.ContainsKey("FileRef")) {
+        itemDict.Add("Url", Util.getBaseUrl(rootSite) + listItem["FileRef"]);
+      } else {
+        itemDict.Add("Url", Util.getBaseUrl(rootSite) + parentList.DefaultDisplayFormUrl + string.Format("?ID={0}", listItem.Id));
       }
-
-      Directory.Delete(targetDir, false);
+      if (listItem.File.ServerObjectIsNull == false) {
+        itemDict.Add("TimeLastModified", listItem.File.TimeLastModified.ToString());
+        itemDict.Add("ListItemType", "List_Item");
+        if (config.maxFileSizeBytes < 0 || listItem.FieldValues.ContainsKey("File_x0020_Size") == false ||
+            int.Parse((string)listItem.FieldValues["File_x0020_Size"]) < config.maxFileSizeBytes) {
+          string filePath = config.baseDir + Path.DirectorySeparatorChar + "files" + Path.DirectorySeparatorChar +
+                                          Guid.NewGuid().ToString() + Path.GetExtension(listItem.File.Name);
+          FileToFetch toDownload = new FileToFetch();
+          toDownload.saveToPath = filePath;
+          toDownload.serverRelativeUrl = listItem.File.ServerRelativeUrl;
+          fileFetchList.Add(toDownload);
+          itemDict.Add("ExportPath", filePath);
+        }
+      } else if (listItem.Folder.ServerObjectIsNull == false) {
+        itemDict.Add("ListItemType", "Folder");
+      } else {
+        itemDict.Add("ListItemType", "List_Item");
+      }
+      if (listItem.HasUniqueRoleAssignments) {
+        clientContext.Load(listItem.RoleAssignments,
+            ras => ras.Include(
+                    item => item.PrincipalId,
+                    item => item.Member.LoginName,
+                    item => item.Member.Title,
+                    item => item.Member.PrincipalType,
+                    item => item.RoleDefinitionBindings));
+        clientContext.ExecuteQuery();
+        //log.InfoFormat("List Item {0} has unique role assignments: {1}", itemDict["Url"], listItem.RoleAssignments);
+        SetRoleAssignments(listItem.RoleAssignments, itemDict);
+      }
+      itemDict.Add("FieldValues", listItem.FieldValues);
+      if (listItem.FieldValues.ContainsKey("Attachments") && (bool)listItem.FieldValues["Attachments"]) {
+        clientContext.Load(listItem.AttachmentFiles);
+        clientContext.ExecuteQuery();
+        List<Dictionary<string, object>> attachmentFileList = new List<Dictionary<string, object>>();
+        foreach (Attachment attachmentFile in listItem.AttachmentFiles) {
+          Dictionary<string, object> attachmentFileDict = new Dictionary<string, object>();
+          attachmentFileDict.Add("Url", Util.getBaseUrl(rootSite) + attachmentFile.ServerRelativeUrl);
+          string filePath = config.baseDir + Path.DirectorySeparatorChar + "files" + Path.DirectorySeparatorChar +
+                                          Guid.NewGuid().ToString() + Path.GetExtension(attachmentFile.FileName);
+          FileToFetch toDownload = new FileToFetch();
+          toDownload.saveToPath = filePath;
+          toDownload.serverRelativeUrl = attachmentFile.ServerRelativeUrl;
+          fileFetchList.Add(toDownload);
+          attachmentFileDict.Add("ExportPath", filePath);
+          attachmentFileDict.Add("FileName", attachmentFile.FileName);
+          attachmentFileList.Add(attachmentFileDict);
+        }
+        itemDict.Add("AttachmentFiles", attachmentFileList);
+      }
+      return itemDict;
     }
 
-    void writeWebJson() {
+    void WriteWebJson() {
       string webJsonPath = config.baseDir + Path.DirectorySeparatorChar + "web-" + Guid.NewGuid() + ".json";
       System.IO.File.WriteAllText(webJsonPath, config.serializer.Serialize(rootWebDict));
     }
@@ -577,14 +631,14 @@ namespace SpPrefetchIndexBuilder {
       return clientContext;
     }
 
-    public void writeAllListsToJson() {
+    void WriteAllListsToJson() {
       foreach (ListsOutput nextListOutput in listsOutput) {
         System.IO.File.WriteAllText(nextListOutput.jsonPath, config.serializer.Serialize(nextListOutput.listsDict));
         log.InfoFormat("Exported list to {0}", nextListOutput.jsonPath);
       }
     }
 
-    public void getWebs(string url, string rootLevelSiteUrl, Dictionary<string, object> parentWebDict) {
+    private void GetWebs(string url, string rootLevelSiteUrl, Dictionary<string, object> parentWebDict) {
       CheckAbort();
       ClientContext clientContext = getClientContext(url);
       Web oWebsite = clientContext.Web;
@@ -605,7 +659,7 @@ namespace SpPrefetchIndexBuilder {
 
       if (!config.excludeSubSites) {
         foreach (Web orWebsite in oWebsite.Webs) {
-          getWebs(orWebsite.Url, rootLevelSiteUrl, webToFetch.webDict);
+          GetWebs(orWebsite.Url, rootLevelSiteUrl, webToFetch.webDict);
         }
       } else {
         log.Info("Not fetching sub sites because --excludeSubSites=true");
@@ -624,7 +678,6 @@ namespace SpPrefetchIndexBuilder {
       }
       webFetchList.Add(webToFetch);
     }
-
 
     static void SetRoleAssignments(RoleAssignmentCollection roleAssignments, Dictionary<string, object> itemDict) {
       Dictionary<string, object> roleAssignmentsDict = new Dictionary<string, object>();
@@ -678,6 +731,12 @@ namespace SpPrefetchIndexBuilder {
         files.Add(innerFolderDict);
       }
       return files;
+    }
+    public static void CheckAbort() {
+      if (System.IO.File.Exists(config.baseDir + Path.DirectorySeparatorChar + ".." + Path.DirectorySeparatorChar + ".doabort")) {
+        log.WarnFormat("The .doabort file was found. Stopping program");
+        Environment.Exit(0);
+      }
     }
   }
 }

@@ -1,6 +1,6 @@
 ﻿using System;
 namespace SpPrefetchIndexBuilder {
-  class FileToDownload {
+  class FileToFetch {
     public String serverRelativeUrl;
     public String saveToPath;
   }

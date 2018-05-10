@@ -5,6 +5,15 @@ using Microsoft.SharePoint.Client;
 namespace SpPrefetchIndexBuilder {
   public class SharepointChanges {
 
+    //public List<ChangeWeb> changeWebList = new List<ChangeWeb>();
+    //public List<ChangeSite> changeSiteList = new List<ChangeSite>();
+    //public List<ChangeList> changeListList = new List<ChangeList>();
+    //public List<ChangeItem> changeItemList = new List<ChangeItem>();
+    //public List<ChangeFile> changeFileList = new List<ChangeFile>();
+    //public List<ChangeGroup> changeGroupList = new List<ChangeGroup>();
+    //public List<ChangeUser> changeUserList = new List<ChangeUser>();
+    public List<ChangeOutput> changeOutputs = new List<ChangeOutput>();
+
     // The change tokens used below are described by the following:
 
     // A change token is a delimited string with the following parts in the following order:
@@ -84,20 +93,28 @@ namespace SpPrefetchIndexBuilder {
       return changes;
     }
 
-    public static void AddChangeToIncrementalDict(Dictionary<string, object> changesDict, string type, string ownerOfChangeUrl, Change change) {
+    public void AddChangeToIncrementalDict(Dictionary<string, object> changesDict, string type, string ownerOfChangeUrl, Change change) {
       Dictionary<string, object> changeDict = new Dictionary<string, object>();
+      ChangeOutput changeOutput = new ChangeOutput();
+      changeOutput.change = change;
+      changeOutput.site = ownerOfChangeUrl;
+      changeOutput.changeDict = changeDict;
+      changeOutputs.Add(changeOutput);
       if (change is ChangeGroup) {
         ChangeGroup changeGroup = (ChangeGroup)change;
         changeDict.Add("GroupId", changeGroup.GroupId);
+        //changeGroupList.Add(changeGroup);
       } else if (change is ChangeUser) {
         ChangeUser changeUser = (ChangeUser)change;
         changeDict.Add("Activate", changeUser.Activate);
         changeDict.Add("UserId", changeUser.UserId);
+        //changeUserList.Add(changeUser);
       } else if (change is ChangeItem) {
         ChangeItem changeItem = (ChangeItem)change;
         changeDict.Add("ItemId", changeItem.ItemId);
         changeDict.Add("ListId", changeItem.ListId);
         changeDict.Add("WebId", changeItem.WebId);
+        //changeItemList.Add(changeItem);
       } else if (change is ChangeFolder) {
         ChangeFolder changeFolder = (ChangeFolder)change;
         changeDict.Add("UniqueId", changeFolder.UniqueId);
@@ -106,13 +123,16 @@ namespace SpPrefetchIndexBuilder {
         ChangeList changeList = (ChangeList)change;
         changeDict.Add("ListId", changeList.ListId);
         changeDict.Add("WebId", changeList.WebId);
+        //changeListList.Add(changeList);
       } else if (change is ChangeFile) {
         ChangeFile changeFile = (ChangeFile)change;
         changeDict.Add("UniqueId", changeFile.UniqueId);
         changeDict.Add("WebId", changeFile.WebId);
+        //changeFileList.Add(changeFile);
       } else if (change is ChangeWeb) {
         ChangeWeb changeWeb = (ChangeWeb)change;
         changeDict.Add("WebId", changeWeb.WebId);
+        //changeWebList.Add(changeWeb);
       } else if (change is ChangeView) {
         return;
       } else {

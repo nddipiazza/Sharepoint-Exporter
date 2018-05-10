@@ -111,11 +111,14 @@
     <Compile Include="SharepointChanges.cs" />
     <Compile Include="WebToFetch.cs" />
     <Compile Include="ListToFetch.cs" />
-    <Compile Include="FileToDownload.cs" />
+    <Compile Include="FileToFetch.cs" />
     <Compile Include="ListsOutput.cs" />
     <Compile Include="SharepointExporterConfig.cs" />
     <Compile Include="SiteCollectionsUtil.cs" />
     <Compile Include="Util.cs" />
+    <Compile Include="ChangeToFetch.cs" />
+    <Compile Include="ChangeOutput.cs" />
+    <Compile Include="IncrementalFileOutput.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />

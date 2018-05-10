@@ -29,5 +29,20 @@ namespace SpPrefetchIndexBuilder {
     public static string getBaseUrlHost(string siteUrl) {
       return new Uri(siteUrl).Host;
     }
+    public static void deleteDirectory(string targetDir) {
+      string[] files = Directory.GetFiles(targetDir);
+      string[] dirs = Directory.GetDirectories(targetDir);
+
+      foreach (string file in files) {
+        System.IO.File.SetAttributes(file, FileAttributes.Normal);
+        System.IO.File.Delete(file);
+      }
+
+      foreach (string dir in dirs) {
+        deleteDirectory(dir);
+      }
+
+      Directory.Delete(targetDir, false);
+    }
   }
 }
