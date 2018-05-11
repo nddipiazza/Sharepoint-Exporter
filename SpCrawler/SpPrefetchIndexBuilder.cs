@@ -536,14 +536,6 @@ namespace SpPrefetchIndexBuilder {
       try {
         contentTypeName = listItem.ContentType.Name;
       } catch (Exception excep) {
-
-        ClientContext clientContext2 = getClientContext(siteUrl);
-        ListItem listItem2 = clientContext2.Web.Lists.GetById(parentList.Id).GetItemById(listItem.Id);
-        clientContext2.Load(listItem2);
-        clientContext2.ExecuteQuery();
-
-        
-
         log.ErrorFormat("On site {0} could not get listItem.ContentType.Name for list item ListId={1}, ItemId={2}, DisplayName={3} due to {4}", siteUrl, parentList.Id, listItem.Id, listItem.DisplayName, excep);
       }
       itemDict.Add("ContentTypeName", contentTypeName);
