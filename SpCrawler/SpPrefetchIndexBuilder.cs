@@ -16,9 +16,9 @@ namespace SpPrefetchIndexBuilder {
     public static SharepointExporterConfig config;
     public static int fileCount = 0;
     public string rootSite;
+    public Auth auth;
     public string[] incrementalFiles;
     public static HttpClient httpClient;
-    public CredentialCache csomCredentialsCache = null;
     public List<ChangeToFetch> changeFetchList = new List<ChangeToFetch>();
     public List<ListToFetch> listFetchList = new List<ListToFetch>();
     public List<WebToFetch> webFetchList = new List<WebToFetch>();
@@ -48,18 +48,13 @@ namespace SpPrefetchIndexBuilder {
 
       ServicePointManager.DefaultConnectionLimit = config.numThreads;
 
-      if (config.sites.Count == 1) {
+      if (!config.isSharepointOnline && config.sites.Count == 1) {
         Uri onlyUri = new Uri(config.sites[0]);
         if (onlyUri.PathAndQuery == "/") {
           log.InfoFormat("Only found the top-most root URL of a sharepoint site {0}. Will attempt to fetch site collections with SiteData.asmx.", config.sites[0]);
-          CredentialCache cc = new CredentialCache();
-          cc.Add(new Uri(config.sites[0]), "NTLM", config.networkCredentials);
-          HttpClientHandler handler = new HttpClientHandler();
-          handler.Credentials = cc;
-          HttpClient soapHttpClient = new HttpClient(handler);
-          soapHttpClient.Timeout = TimeSpan.FromSeconds(config.fileDownloadTimeoutSecs);
-          soapHttpClient.DefaultRequestHeaders.ConnectionClose = true;
-          SiteCollectionsUtil siteCollectionsUtil = new SiteCollectionsUtil(cc, config.sites[0]);
+
+          Auth auth = new Auth(config.sites[0], config.isSharepointOnline, config.domain, config.username, config.password, config.authScheme);
+          SiteCollectionsUtil siteCollectionsUtil = new SiteCollectionsUtil(auth.credentialsCache, config.sites[0]);
           foreach (string nextSite in siteCollectionsUtil.GetAllSiteCollections()) {
             string nextSiteWithSlashAddedIfNeeded = Util.addSlashToUrlIfNeeded(nextSite);
             if (!config.sites.Contains(nextSite)) {
@@ -67,19 +62,16 @@ namespace SpPrefetchIndexBuilder {
               config.sites.Add(nextSiteWithSlashAddedIfNeeded);
             }
           }
-          soapHttpClient.Dispose();
         }
       }
-      bool isIncremental = false;
+      string[] incrementalFiles = null;
       if (Directory.Exists(config.baseDir)) {
-        string[] incrementalFiles = Directory.GetFiles(config.baseDir, "web*.json", SearchOption.AllDirectories);
-        isIncremental = incrementalFiles.Length > 0;
-
+        incrementalFiles = Directory.GetFiles(config.baseDir, "web*.json", SearchOption.AllDirectories);
+      }
+      if (incrementalFiles != null && incrementalFiles.Length > 0) {
         SpPrefetchIndexBuilder spib = new SpPrefetchIndexBuilder(incrementalFiles);
         spib.BuildIncrementalIndex();
-
-      }
-      if (!isIncremental) {
+      } else {
         Stopwatch swAll = Stopwatch.StartNew();
         foreach (string site in config.sites) {
           SpPrefetchIndexBuilder spib = new SpPrefetchIndexBuilder(site);
@@ -91,26 +83,15 @@ namespace SpPrefetchIndexBuilder {
 
     public SpPrefetchIndexBuilder(string rootSite) {
       this.rootSite = rootSite;
-      init(rootSite);
+      auth = new Auth(rootSite, config.isSharepointOnline, config.domain, config.username, config.password, config.authScheme);
+      httpClient = auth.createHttpClient(config.fileDownloadTimeoutSecs);
     }
 
     public SpPrefetchIndexBuilder(string[] incrementalFiles) {
       this.incrementalFiles = incrementalFiles;
       rootSite = config.sites[0];
-      init(rootSite);
-    }
-
-    void init(string rootSite) {
-      csomCredentialsCache = new CredentialCache();
-      csomCredentialsCache.Add(new Uri(rootSite), config.authScheme, config.networkCredentials);
-
-      CredentialCache credentialCache = new CredentialCache { { Util.getBaseUrlHost(rootSite), Util.getBaseUrlPort(rootSite), config.authScheme, config.networkCredentials } };
-      var httpHandler = new HttpClientHandler() {
-        CookieContainer = new CookieContainer(),
-        Credentials = credentialCache.GetCredential(Util.getBaseUrlHost(rootSite), Util.getBaseUrlPort(rootSite), config.authScheme)
-      };
-      httpClient = new HttpClient(httpHandler);
-      httpClient.Timeout = TimeSpan.FromSeconds(config.fileDownloadTimeoutSecs);
+      auth = new Auth(rootSite, config.isSharepointOnline, config.domain, config.username, config.password, config.authScheme);
+      httpClient = auth.createHttpClient(config.fileDownloadTimeoutSecs);
     }
 
     public void buildFullIndex() {
@@ -625,8 +606,10 @@ namespace SpPrefetchIndexBuilder {
     public ClientContext getClientContext(string site) {
       ClientContext clientContext = new ClientContext(site);
       clientContext.RequestTimeout = -1;
-      if (csomCredentialsCache != null) {
-        clientContext.Credentials = csomCredentialsCache;
+      if (auth.credentialsCache != null) {
+        clientContext.Credentials = auth.credentialsCache;
+      } else if (auth.sharepointOnlineCredentials != null) {
+        clientContext.Credentials = auth.sharepointOnlineCredentials;
       }
       return clientContext;
     }

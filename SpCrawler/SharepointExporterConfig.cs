@@ -1,37 +1,38 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Net;
-using System.Security;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Web.Script.Serialization;
 
 namespace SpPrefetchIndexBuilder {
   
   public class SharepointExporterConfig {
-    private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+    static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
     public string authScheme = "NTLM";
     public List<string> sites = new List<string>();
     public List<string> ignoreListNames = new List<string>();
-    public string baseDir = null;
-    public bool customBaseDir = false;
-    public string rootSite = null;
+    public string baseDir;
+    public bool customBaseDir;
     public int numThreads = 50;
-    public bool excludeUsersAndGroups = false;
-    public bool excludeGroupMembers = false;
-    public bool excludeSubSites = false;
-    public bool excludeLists = false;
-    public bool excludeRoleDefinitions = false;
-    public bool excludeRoleAssignments = false;
-    public bool deleteExistingOutputDir = false;
-    public bool excludeFiles = false;
+    public bool excludeUsersAndGroups;
+    public bool excludeGroupMembers;
+    public bool excludeSubSites;
+    public bool excludeLists;
+    public bool excludeRoleDefinitions;
+    public bool excludeRoleAssignments;
+    public bool deleteExistingOutputDir;
+    public bool excludeFiles;
     public int maxFiles = -1;
     public JavaScriptSerializer serializer = new JavaScriptSerializer();
     public int maxFileSizeBytes = -1;
-    public int fileCount = 0;
+    public int fileCount;
     public int fileDownloadTimeoutSecs = 30;
-    public NetworkCredential networkCredentials;
+    public string domain; 
+    public string username;
+    public string password;
+    public bool isSharepointOnline;
 
     public SharepointExporterConfig(string[] args) {
       ignoreListNames.Add("Cache Profiles");
@@ -82,9 +83,7 @@ namespace SpPrefetchIndexBuilder {
 
       bool help = false;
 
-      string spDomain = null;
-      string spUsername = null;
-      string spPassword = Environment.GetEnvironmentVariable("SP_PWD");
+      password = Environment.GetEnvironmentVariable("SP_PWD");
       baseDir = Directory.GetCurrentDirectory();
       customBaseDir = false;
       string sitesFilePath = null;
@@ -106,11 +105,11 @@ namespace SpPrefetchIndexBuilder {
         } else if (arg.StartsWith("--authScheme=", StringComparison.CurrentCulture)) {
           authScheme = arg.Split(new Char[] { '=' })[1];
         } else if (arg.StartsWith("--domain=", StringComparison.CurrentCulture)) {
-          spDomain = arg.Split(new Char[] { '=' })[1];
+          domain = arg.Split(new Char[] { '=' })[1];
         } else if (arg.StartsWith("--username=", StringComparison.CurrentCulture)) {
-          spUsername = arg.Split(new Char[] { '=' })[1];
+          username = arg.Split(new Char[] { '=' })[1];
         } else if (arg.StartsWith("--password=", StringComparison.CurrentCulture)) {
-          spPassword = arg.Split(new Char[] { '=' })[1];
+          password = arg.Split(new Char[] { '=' })[1];
         } else if (arg.StartsWith("--numThreads=", StringComparison.CurrentCulture)) {
           numThreads = int.Parse(arg.Split(new Char[] { '=' })[1]);
         } else if (arg.StartsWith("--maxFileSizeBytes=", StringComparison.CurrentCulture)) {
@@ -137,15 +136,6 @@ namespace SpPrefetchIndexBuilder {
           log.ErrorFormat("ERROR - Unrecognized argument {0}.", arg);
           help = true;
         }
-      }
-
-      if (spPassword == null && spUsername != null) {
-        Console.WriteLine("Please enter password for {0}", spUsername);
-        networkCredentials = new NetworkCredential(spUsername, GetPassword(), spDomain);
-      } else if (spUsername != null) {
-        networkCredentials = new NetworkCredential(spUsername, spPassword, spDomain);
-      } else {
-        networkCredentials = CredentialCache.DefaultNetworkCredentials;
       }
 
       if (sitesFilePath != null) {
@@ -190,25 +180,9 @@ namespace SpPrefetchIndexBuilder {
                           .AppendLine("    --maxFiles=[if > 0 will only download this many files before quitting. default -1]"));
         Environment.Exit(0);
       }
+      Regex r = new Regex(@"(?<Protocol>\w+):\/\/.+\.sharepoint\.com.*");
+      isSharepointOnline = r.Match(sites[0]).Success;
 
-    }
-    private SecureString GetPassword() {
-      var pwd = new SecureString();
-      while (true) {
-        ConsoleKeyInfo i = Console.ReadKey(true);
-        if (i.Key == ConsoleKey.Enter) {
-          break;
-        } else if (i.Key == ConsoleKey.Backspace) {
-          if (pwd.Length > 0) {
-            pwd.RemoveAt(pwd.Length - 1);
-            Console.Write("\b \b");
-          }
-        } else {
-          pwd.AppendChar(i.KeyChar);
-          Console.Write("*");
-        }
-      }
-      return pwd;
     }
   }
 }

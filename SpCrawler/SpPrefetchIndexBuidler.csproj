@@ -119,6 +119,7 @@
     <Compile Include="ChangeToFetch.cs" />
     <Compile Include="ChangeOutput.cs" />
     <Compile Include="IncrementalFileOutput.cs" />
+    <Compile Include="Auth.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
