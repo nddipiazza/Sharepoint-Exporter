@@ -44,7 +44,7 @@ namespace SpPrefetchIndexBuilder {
         Directory.CreateDirectory(config.baseDir + Path.DirectorySeparatorChar + "files");
       }
 
-      log.InfoFormat("Sharepoint Exporter will run with {0} threads.", config.numThreads);
+      log.InfoFormat("Sharepoint Exporter will run with a max of {0} threads.", config.numThreads);
 
       ServicePointManager.DefaultConnectionLimit = config.numThreads;
 
@@ -439,8 +439,7 @@ namespace SpPrefetchIndexBuilder {
       Dictionary<string, object> listsDict = new Dictionary<string, object>();
       foreach (List list in lists) {
         // All sites have a few lists that we don't care about exporting. Exclude these.
-        if (ignoreListNames.Contains(list.Title)) {
-          //log.InfoFormat("Skipping built-in sharepoint list " + list.Title);
+        if (list.Hidden || list.IsCatalog) {
           continue;
         }
         ListToFetch listToFetch = new ListToFetch();
@@ -537,6 +536,14 @@ namespace SpPrefetchIndexBuilder {
       try {
         contentTypeName = listItem.ContentType.Name;
       } catch (Exception excep) {
+
+        ClientContext clientContext2 = getClientContext(siteUrl);
+        ListItem listItem2 = clientContext2.Web.Lists.GetById(parentList.Id).GetItemById(listItem.Id);
+        clientContext2.Load(listItem2);
+        clientContext2.ExecuteQuery();
+
+        
+
         log.ErrorFormat("On site {0} could not get listItem.ContentType.Name for list item ListId={1}, ItemId={2}, DisplayName={3} due to {4}", siteUrl, parentList.Id, listItem.Id, listItem.DisplayName, excep);
       }
       itemDict.Add("ContentTypeName", contentTypeName);

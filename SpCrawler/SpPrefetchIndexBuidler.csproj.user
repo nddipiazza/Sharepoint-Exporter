@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
-    <StartArguments></StartArguments>
+    <StartArguments>http://172.16.11.15 c:\lucidworks\outdir winlab dev-admin</StartArguments>
   </PropertyGroup>
   <PropertyGroup>
     <PublishUrlHistory>publish\</PublishUrlHistory>
@@ -18,7 +18,7 @@
   </PropertyGroup>
   <PropertyGroup Condition=" '$(RunConfiguration)' == 'Default' ">
     <StartAction>Project</StartAction>
-    <StartArguments></StartArguments>
+    <StartArguments>--outputDir=/home/ndipiazza/Downloads/csomout --domain=winlab --username=roblucar@lucidworksfusion.onmicrosoft.com --password=Lucid123 --sitesFile=/home/ndipiazza/lucidworks/Sharepoint-Exporter/SpCrawler/sites.txt --deleteExistingOutputDir=true</StartArguments>
     <EnvironmentVariables>
       <Variable name="MONO_REGISTRY_PATH" value="/home/ndipiazza/registry" />
     </EnvironmentVariables>
