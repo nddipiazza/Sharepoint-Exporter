@@ -31,7 +31,7 @@ namespace SpPrefetchIndexBuilder {
     public List<string> ignoreListNames = new List<string>();
 
     static void Main(string[] args) {
-      ThreadContext.Properties["threadid"] = "Main";
+      ThreadContext.Properties["threadid"] = "MainThread";
       config = new SharepointExporterConfig(args);
       if (config.customBaseDir && config.deleteExistingOutputDir && Directory.Exists(config.baseDir)) {
         Util.deleteDirectory(config.baseDir);
@@ -51,7 +51,7 @@ namespace SpPrefetchIndexBuilder {
       if (!config.isSharepointOnline && config.sites.Count == 1) {
         Uri onlyUri = new Uri(config.sites[0]);
         if (onlyUri.PathAndQuery == "/") {
-          log.InfoFormat("Only found the top-most root URL of a sharepoint site {0}. Will attempt to fetch site collections with SiteData.asmx.", config.sites[0]);
+          log.InfoFormat("Only found the top-most root URL of a sharepoint on-premise site {0}. Will attempt to fetch site collections with SiteData.asmx.", config.sites[0]);
 
           Auth auth = new Auth(config.sites[0], config.isSharepointOnline, config.domain, config.username, config.password, config.authScheme);
           SiteCollectionsUtil siteCollectionsUtil = new SiteCollectionsUtil(auth.credentialsCache, config.sites[0]);
@@ -169,7 +169,7 @@ namespace SpPrefetchIndexBuilder {
     }
 
     void ProcessChange(ChangeOutput changeOutput) {
-      ThreadContext.Properties["threadid"] = "ProcessChange" + Thread.CurrentThread.ManagedThreadId;
+      ThreadContext.Properties["threadid"] = "ChangeThread" + Thread.CurrentThread.ManagedThreadId;
       if (changeOutput.change is ChangeItem) {
         ChangeItem changeItem = (ChangeItem)changeOutput.change;
         if (changeItem.ChangeType == ChangeType.Add || changeItem.ChangeType == ChangeType.Update) {
@@ -192,7 +192,7 @@ namespace SpPrefetchIndexBuilder {
     }
 
     public void FetchChanges(ChangeToFetch changeToFetch) {
-      ThreadContext.Properties["threadid"] = "FetchChange" + Thread.CurrentThread.ManagedThreadId;
+      ThreadContext.Properties["threadid"] = "ChangeThread" + Thread.CurrentThread.ManagedThreadId;
       string incrementalFileContents;
       using (StreamReader reader = new StreamReader(changeToFetch.incrementalFilePath)) {
         incrementalFileContents = reader.ReadToEnd();
@@ -285,6 +285,7 @@ namespace SpPrefetchIndexBuilder {
         return;
       }
       string nextFileUrl = Util.getBaseUrl(rootSite) + toFetchFile.serverRelativeUrl;
+      Stopwatch fileDownloadStopwatch = Stopwatch.StartNew();
       try {
         var responseResult = httpClient.GetAsync(nextFileUrl);
         if (responseResult.Result != null && responseResult.Result.StatusCode == HttpStatusCode.OK) {
@@ -298,12 +299,16 @@ namespace SpPrefetchIndexBuilder {
           log.ErrorFormat("Got non-OK status {0} when trying to download url {1}", responseResult.Result.StatusCode, nextFileUrl);
         }
       } catch (Exception e) {
-        log.ErrorFormat("Gave up trying to download url {0} to file {1} due to error: {2}", nextFileUrl, toFetchFile.saveToPath, e);
+        if (e.InnerException != null && e.InnerException is TaskCanceledException) {
+          log.WarnFormat("Timeout while downloading url {0} after {1} milliseconds.", nextFileUrl, fileDownloadStopwatch.ElapsedMilliseconds);
+        } else {
+          log.ErrorFormat("Gave up trying to download url {0} to file {1} after {2} milliseconds due to error: {3}", nextFileUrl, toFetchFile.saveToPath, fileDownloadStopwatch.ElapsedMilliseconds, e);
+        }
       }
     }
 
     public void FetchWeb(WebToFetch webToFetch) {
-      ThreadContext.Properties["threadid"] = "Web" + Thread.CurrentThread.ManagedThreadId;
+      ThreadContext.Properties["threadid"] = "WebThread" + Thread.CurrentThread.ManagedThreadId;
       CheckAbort();
       DateTime now = DateTime.UtcNow;
       string url = webToFetch.url;
@@ -457,7 +462,7 @@ namespace SpPrefetchIndexBuilder {
 
     public void FetchList(ListToFetch listToFetch) {
       try {
-        ThreadContext.Properties["threadid"] = "List" + Thread.CurrentThread.ManagedThreadId;
+        ThreadContext.Properties["threadid"] = "ListThread" + Thread.CurrentThread.ManagedThreadId;
         CheckAbort();
         DateTime now = DateTime.UtcNow;
         ClientContext clientContext = getClientContext(listToFetch.site);
