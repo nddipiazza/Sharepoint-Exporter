@@ -9,6 +9,7 @@ using System.Net.Http;
 using System.IO;
 using log4net;
 using System.Collections.Concurrent;
+using System.Linq;
 
 namespace SpPrefetchIndexBuilder {
   class SpPrefetchIndexBuilder {
@@ -390,7 +391,7 @@ namespace SpPrefetchIndexBuilder {
       ListCollection lists = web.Lists;
       GroupCollection groups = web.SiteGroups;
       UserCollection users = web.SiteUsers;
-      clientContext.Load(lists);
+      clientContext.Load(lists, ls => ls.Where(l => l.Hidden == false && l.IsCatalog == false));
       if (config.excludeGroupMembers) {
         clientContext.Load(groups,
           grp => grp.Include(
@@ -452,10 +453,6 @@ namespace SpPrefetchIndexBuilder {
       }
       Dictionary<string, object> listsDict = new Dictionary<string, object>();
       foreach (List list in lists) {
-        // All sites have a few lists that we don't care about exporting. Exclude these.
-        if (list.Hidden || list.IsCatalog) {
-          continue;
-        }
         ListToFetch listToFetch = new ListToFetch();
         listToFetch.listId = list.Id;
         listToFetch.listsDict = listsDict;
