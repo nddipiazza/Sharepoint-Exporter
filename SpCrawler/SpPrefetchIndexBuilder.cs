@@ -8,6 +8,7 @@ using System.Threading;
 using System.Net.Http;
 using System.IO;
 using log4net;
+using System.Collections.Concurrent;
 
 namespace SpPrefetchIndexBuilder {
   class SpPrefetchIndexBuilder {
@@ -24,8 +25,8 @@ namespace SpPrefetchIndexBuilder {
     public List<WebToFetch> webFetchList = new List<WebToFetch>();
     public List<FileToFetch> fileFetchList = new List<FileToFetch>();
     public Dictionary<string, object> rootWebDict;
-    public List<ListsOutput> listsOutput = new List<ListsOutput>();
-    public List<IncrementalFileOutput> incrementalFileOutputs = new List<IncrementalFileOutput>();
+    public ConcurrentQueue<ListsOutput> listsOutput = new ConcurrentQueue<ListsOutput>();
+    public ConcurrentQueue<IncrementalFileOutput> incrementalFileOutputs = new ConcurrentQueue<IncrementalFileOutput>();
     SharepointChanges sharepointChanges = new SharepointChanges();
 
     public List<string> ignoreListNames = new List<string>();
@@ -48,22 +49,22 @@ namespace SpPrefetchIndexBuilder {
 
       ServicePointManager.DefaultConnectionLimit = config.numThreads;
 
-      if (!config.isSharepointOnline && config.sites.Count == 1) {
-        Uri onlyUri = new Uri(config.sites[0]);
-        if (onlyUri.PathAndQuery == "/") {
-          log.InfoFormat("Only found the top-most root URL of a sharepoint on-premise site {0}. Will attempt to fetch site collections with SiteData.asmx.", config.sites[0]);
+      //if (!config.isSharepointOnline && config.sites.Count == 1) {
+      //  Uri onlyUri = new Uri(config.sites[0]);
+      //  if (onlyUri.PathAndQuery == "/") {
+      //    log.InfoFormat("Only found the top-most root URL of a sharepoint on-premise site {0}. Will attempt to fetch site collections with SiteData.asmx.", config.sites[0]);
 
-          Auth auth = new Auth(config.sites[0], config.isSharepointOnline, config.domain, config.username, config.password, config.authScheme);
-          SiteCollectionsUtil siteCollectionsUtil = new SiteCollectionsUtil(auth.credentialsCache, config.sites[0]);
-          foreach (string nextSite in siteCollectionsUtil.GetAllSiteCollections()) {
-            string nextSiteWithSlashAddedIfNeeded = Util.addSlashToUrlIfNeeded(nextSite);
-            if (!config.sites.Contains(nextSite)) {
-              log.InfoFormat("Adding site collection to sites list: {0}", nextSiteWithSlashAddedIfNeeded);
-              config.sites.Add(nextSiteWithSlashAddedIfNeeded);
-            }
-          }
-        }
-      }
+      //    Auth auth = new Auth(config.sites[0], config.isSharepointOnline, config.domain, config.username, config.password, config.authScheme);
+      //    SiteCollectionsUtil siteCollectionsUtil = new SiteCollectionsUtil(auth.credentialsCache, config.sites[0]);
+      //    foreach (string nextSite in siteCollectionsUtil.GetAllSiteCollections()) {
+      //      string nextSiteWithSlashAddedIfNeeded = Util.addSlashToUrlIfNeeded(nextSite);
+      //      if (!config.sites.Contains(nextSite)) {
+      //        log.InfoFormat("Adding site collection to sites list: {0}", nextSiteWithSlashAddedIfNeeded);
+      //        config.sites.Add(nextSiteWithSlashAddedIfNeeded);
+      //      }
+      //    }
+      //  }
+      //}
       string[] incrementalFiles = null;
       if (Directory.Exists(config.baseDir)) {
         incrementalFiles = Directory.GetFiles(config.baseDir, "web*.json", SearchOption.AllDirectories);
@@ -96,7 +97,7 @@ namespace SpPrefetchIndexBuilder {
 
     public void buildFullIndex() {
       try {
-        log.InfoFormat("Building full index for site {0}", rootSite);
+        log.InfoFormat("Building full index for site \"{0}\"", rootSite);
 
         Stopwatch swWeb = Stopwatch.StartNew();
         GetWebs(rootSite, rootSite, null);
@@ -197,11 +198,12 @@ namespace SpPrefetchIndexBuilder {
       using (StreamReader reader = new StreamReader(changeToFetch.incrementalFilePath)) {
         incrementalFileContents = reader.ReadToEnd();
       }
-      Dictionary<string, object> previousIncrementalDict = (config.serializer.DeserializeObject(incrementalFileContents) as Dictionary<string, object>);
+      Dictionary<string, object> previousIncrementalDict = 
+        (config.serializer.DeserializeObject(incrementalFileContents) as Dictionary<string, object>);
       IncrementalFileOutput incrementalFileOutput = new IncrementalFileOutput();
       incrementalFileOutput.dict = FetchWebChanges(previousIncrementalDict);
       incrementalFileOutput.incrementalFilePath = changeToFetch.incrementalFilePath;
-      incrementalFileOutputs.Add(incrementalFileOutput);
+      incrementalFileOutputs.Enqueue(incrementalFileOutput);
     }
 
     public Dictionary<string, object> FetchWebChanges(Dictionary<string, object> previousIncrementalDict) {
@@ -213,7 +215,8 @@ namespace SpPrefetchIndexBuilder {
       newIncrementalDict.Add("changes", changesDict);
 
       DateTime fetchedDate = (DateTime)previousIncrementalDict["FetchedDate"];
-      log.InfoFormat("Processing incremental changes for URL {0} getting changes since {1}", url, TimeZoneInfo.ConvertTimeFromUtc(fetchedDate, TimeZoneInfo.Local));
+      log.InfoFormat("Processing incremental changes for URL {0} getting changes since {1}", url, 
+                     TimeZoneInfo.ConvertTimeFromUtc(fetchedDate, TimeZoneInfo.Local));
       newIncrementalDict["FetchedDate"] = DateTime.UtcNow;
       ClientContext clientContext = getClientContext(url);
       var site = clientContext.Site;
@@ -242,13 +245,15 @@ namespace SpPrefetchIndexBuilder {
       }
       changeCollection = SharepointChanges.GetChanges(clientContext, web, fetchedDate);
       foreach (Change change in changeCollection) {
-        sharepointChanges.AddChangeToIncrementalDict(changesDict, "web", Util.getBaseUrl(clientContext.Site.Url) + web.ServerRelativeUrl, change);
+        sharepointChanges.AddChangeToIncrementalDict(changesDict, "web", 
+                                                     Util.getBaseUrl(clientContext.Site.Url) + web.ServerRelativeUrl, change);
         if (change.Time.CompareTo(maxTime) > 0) {
           maxTime = change.Time;
         }
       }
       if (!DateTime.MinValue.Equals(maxTime)) {
-        // Sometimes the now time that we made the query is actually earlier than the max item timestamp we got. In that case, just take the max item timestamp + 1second as the next incremental timestamp to avoid refetching stuff we already had.
+        // Sometimes the now time that we made the query is actually earlier than the max item timestamp we got. 
+        // In that case, just take the max item timestamp + 1second as the next incremental timestamp to avoid refetching stuff we already had.
         // This is due to some slight clock skew from client to sharepoint server. 
         if (maxTime > (DateTime)previousIncrementalDict["FetchedDate"]) {
           newIncrementalDict["FetchedDate"] = maxTime.AddSeconds(1);
@@ -259,7 +264,8 @@ namespace SpPrefetchIndexBuilder {
                           TimeZoneInfo.ConvertTimeFromUtc(maxTime, TimeZoneInfo.Local),
                           TimeZoneInfo.ConvertTimeFromUtc((DateTime)previousIncrementalDict["FetchedDate"], TimeZoneInfo.Local));
       } else {
-        log.InfoFormat("No incremental changes found for {0}. Next incremental timestamp will be: {1}", site.Url, TimeZoneInfo.ConvertTimeFromUtc((DateTime)previousIncrementalDict["FetchedDate"], TimeZoneInfo.Local));
+        log.InfoFormat("No incremental changes found for {0}. Next incremental timestamp will be: {1}", site.Url, 
+                       TimeZoneInfo.ConvertTimeFromUtc((DateTime)previousIncrementalDict["FetchedDate"], TimeZoneInfo.Local));
       }
 
       if (previousIncrementalDict.ContainsKey("SubWebs")) {
@@ -294,15 +300,17 @@ namespace SpPrefetchIndexBuilder {
               memStream.CopyTo(fileStream);
             }
           }
-          log.InfoFormat("Successfully downloaded {0} to {1}", nextFileUrl, toFetchFile.saveToPath);
+          log.InfoFormat("Successfully downloaded \"{0}\" to \"{1}\"", nextFileUrl, toFetchFile.saveToPath);
         } else {
-          log.ErrorFormat("Got non-OK status {0} when trying to download url {1}", responseResult.Result.StatusCode, nextFileUrl);
+          log.ErrorFormat("Got non-OK status {0} when trying to download url \"{1}\"", responseResult.Result.StatusCode, nextFileUrl);
         }
       } catch (Exception e) {
         if (e.InnerException != null && e.InnerException is TaskCanceledException) {
-          log.WarnFormat("Timeout while downloading url {0} after {1} milliseconds.", nextFileUrl, fileDownloadStopwatch.ElapsedMilliseconds);
+          log.WarnFormat("Timeout while downloading url \"{0}\" after {1} milliseconds.", nextFileUrl, 
+                         fileDownloadStopwatch.ElapsedMilliseconds);
         } else {
-          log.ErrorFormat("Gave up trying to download url {0} to file {1} after {2} milliseconds due to error: {3}", nextFileUrl, toFetchFile.saveToPath, fileDownloadStopwatch.ElapsedMilliseconds, e);
+          log.ErrorFormat("Gave up trying to download url \"{0}\" to file {1} after {2} milliseconds due to error: {3}", 
+                          nextFileUrl, toFetchFile.saveToPath, fileDownloadStopwatch.ElapsedMilliseconds, e);
         }
       }
     }
@@ -312,7 +320,7 @@ namespace SpPrefetchIndexBuilder {
       CheckAbort();
       DateTime now = DateTime.UtcNow;
       string url = webToFetch.url;
-      log.InfoFormat("Started fetching web {0}", url);
+      log.InfoFormat("Started fetching web \"{0}\"", url);
       ClientContext clientContext = getClientContext(url);
 
       Web web = clientContext.Web;
@@ -344,7 +352,8 @@ namespace SpPrefetchIndexBuilder {
       }
 
       string listsFileName = Guid.NewGuid().ToString() + ".json";
-      string listsJsonPath = config.baseDir + Path.DirectorySeparatorChar.ToString() + "lists" + Path.DirectorySeparatorChar.ToString() + listsFileName;
+      string listsJsonPath = config.baseDir + Path.DirectorySeparatorChar.ToString() + "lists" + 
+                                   Path.DirectorySeparatorChar.ToString() + listsFileName;
       Dictionary<string, object> webDict = webToFetch.webDict;
       webDict.Add("Title", web.Title);
       webDict.Add("Id", web.Id);
@@ -451,12 +460,13 @@ namespace SpPrefetchIndexBuilder {
         listToFetch.listId = list.Id;
         listToFetch.listsDict = listsDict;
         listToFetch.site = url;
+        log.InfoFormat("Adding list Id={0}, url={1}", list.Id, url);
         listFetchList.Add(listToFetch);
       }
       ListsOutput nextListOutput = new ListsOutput();
       nextListOutput.jsonPath = listsJsonPath;
       nextListOutput.listsDict = listsDict;
-      listsOutput.Add(nextListOutput);
+      listsOutput.Enqueue(nextListOutput);
       log.InfoFormat("Finished fetching web {0}", url);
     }
 
@@ -472,7 +482,7 @@ namespace SpPrefetchIndexBuilder {
             lslist => lslist.Description, lslist => lslist.LastItemModifiedDate, lslist => lslist.RootFolder, 
                            lslist => lslist.DefaultDisplayFormUrl);
         clientContext.ExecuteQuery();
-        log.InfoFormat("Started fetching list site={0}, listID={1}, listTitle={2}", listToFetch.site, list.Id, list.Title);
+        log.InfoFormat("Started fetching list site=\"{0}\", listID={1}, listTitle={2}", listToFetch.site, list.Id, list.Title);
         CamlQuery camlQuery = new CamlQuery();
         camlQuery.ViewXml = "<View Scope=\"RecursiveAll\"></View>";
         ListItemCollection collListItem = list.GetItems(camlQuery);
@@ -527,9 +537,9 @@ namespace SpPrefetchIndexBuilder {
         } else {
           listToFetch.listsDict.Add(list.Id.ToString(), listDict);
         }
-        log.InfoFormat("Finished fetching list site={0}, listID={1}, listTitle={2}", listToFetch.site, list.Id, list.Title);
+        log.InfoFormat("Finished fetching list site=\"{0}\", listID={1}, listTitle={2}", listToFetch.site, list.Id, list.Title);
       } catch (Exception e) {
-        log.ErrorFormat("Got error trying to fetch list {0}: {1}", listToFetch.listId, e);
+        log.ErrorFormat("Got error trying to fetch list {0}: {1}", listToFetch == null ? "null" : "" + listToFetch.listId, e);
       }
     }
 
@@ -541,7 +551,8 @@ namespace SpPrefetchIndexBuilder {
       try {
         contentTypeName = listItem.ContentType.Name;
       } catch (Exception excep) {
-        log.ErrorFormat("On site {0} could not get listItem.ContentType.Name for list item ListId={1}, ItemId={2}, DisplayName={3} due to {4}", siteUrl, parentList.Id, listItem.Id, listItem.DisplayName, excep);
+        log.ErrorFormat("On site {0} could not get listItem.ContentType.Name for list item ListId={1}, ItemId={2}, DisplayName={3} due to {4}", 
+                        siteUrl, parentList.Id, listItem.Id, listItem.DisplayName, excep);
       }
       itemDict.Add("ContentTypeName", contentTypeName);
       if (contentTypeName.Equals("Document") && listItem.FieldValues.ContainsKey("FileRef")) {
@@ -603,7 +614,7 @@ namespace SpPrefetchIndexBuilder {
     }
 
     void WriteWebJson() {
-      string webJsonPath = config.baseDir + Path.DirectorySeparatorChar + "web-" + Guid.NewGuid() + ".json";
+      string webJsonPath = config.baseDir + Path.DirectorySeparatorChar + WebUtility.UrlEncode((string)rootWebDict["Url"]) + ".json";
       System.IO.File.WriteAllText(webJsonPath, config.serializer.Serialize(rootWebDict));
     }
 
@@ -633,7 +644,7 @@ namespace SpPrefetchIndexBuilder {
       try {
         clientContext.ExecuteQuery();
       } catch (Exception ex) {
-        log.ErrorFormat("Could not load site {0} because of Error {1}", url, ex.Message);
+        log.ErrorFormat("Could not load site \"{0}\" because of Error {1}", url, ex.Message);
         return;
       }
       WebToFetch webToFetch = new WebToFetch();
