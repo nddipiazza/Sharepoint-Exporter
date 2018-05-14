@@ -8,11 +8,8 @@ using System.Web.Script.Serialization;
 namespace SpPrefetchIndexBuilder {
   
   public class SharepointExporterConfig {
-    static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
-
     public string authScheme = "NTLM";
     public List<string> sites = new List<string>();
-    public List<string> ignoreListNames = new List<string>();
     public string baseDir;
     public bool customBaseDir;
     public int numThreads = 50;
@@ -35,41 +32,6 @@ namespace SpPrefetchIndexBuilder {
     public bool isSharepointOnline;
 
     public SharepointExporterConfig(string[] args) {
-      ignoreListNames.Add("Cache Profiles");
-      ignoreListNames.Add("Content and Structure Reports");
-      ignoreListNames.Add("Content Organizer Rules");
-      ignoreListNames.Add("Content type publishing error log");
-      ignoreListNames.Add("Converted Forms");
-      ignoreListNames.Add("Device Channels");
-      ignoreListNames.Add("Drop Off Library");
-      ignoreListNames.Add("Form Templates");
-      ignoreListNames.Add("Hold Reports");
-      ignoreListNames.Add("Holds");
-      ignoreListNames.Add("Long Running Operation Status");
-      ignoreListNames.Add("MicroFeed");
-      ignoreListNames.Add("Notification List");
-      ignoreListNames.Add("Project Policy Item List");
-      ignoreListNames.Add("Quick Deploy Items");
-      ignoreListNames.Add("Relationships List");
-      ignoreListNames.Add("Reusable Content");
-      ignoreListNames.Add("Site Collection Documents");
-      ignoreListNames.Add("Site Collection Images");
-      ignoreListNames.Add("Solution Gallery");
-      ignoreListNames.Add("Style Library");
-      ignoreListNames.Add("Submitted E-mail Records");
-      ignoreListNames.Add("Suggested Content Browser Locations");
-      ignoreListNames.Add("TaxonomyHiddenList");
-      ignoreListNames.Add("Theme Gallery");
-      ignoreListNames.Add("Translation Packages");
-      ignoreListNames.Add("Translation Status");
-      ignoreListNames.Add("User Information List");
-      ignoreListNames.Add("Variation Labels");
-      ignoreListNames.Add("Web Part Gallery");
-      ignoreListNames.Add("wfpub");
-      ignoreListNames.Add("Composed Looks");
-      ignoreListNames.Add("Master Page Gallery");
-      ignoreListNames.Add("Site Assets");
-      ignoreListNames.Add("Site Pages");
 
       string spMaxFileSizeBytes = Environment.GetEnvironmentVariable("SP_MAX_FILE_SIZE_BYTES");
       if (spMaxFileSizeBytes != null) {
@@ -133,7 +95,7 @@ namespace SpPrefetchIndexBuilder {
         } else if (arg.StartsWith("--excludeFiles=", StringComparison.CurrentCulture)) {
           excludeFiles = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
         } else {
-          log.ErrorFormat("ERROR - Unrecognized argument {0}.", arg);
+          Console.WriteLine("ERROR - Unrecognized argument {0}.", arg);
           help = true;
         }
       }
@@ -141,7 +103,7 @@ namespace SpPrefetchIndexBuilder {
       if (sitesFilePath != null) {
         FileInfo sitesFile = new FileInfo(sitesFilePath);
         if (!sitesFile.Exists) {
-          log.ErrorFormat("Error - sites file {0} doesn't exist", sitesFilePath);
+          Console.WriteLine("Error - sites file {0} doesn't exist", sitesFilePath);
           Environment.Exit(1);
         }
         if (sitesFile != null && sitesFile.Exists) {

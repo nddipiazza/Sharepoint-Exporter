@@ -19,5 +19,4 @@ mkbundle --simple --static --deps \
 	./SpCrawler/bin/Release/Microsoft.SharePoint.Client.Search.dll \
 	./SpCrawler/bin/Release/Microsoft.SharePoint.Client.Taxonomy.dll \
 	./SpCrawler/bin/Release/Microsoft.SharePoint.Client.UserProfiles.dll \
-	./SpCrawler/bin/Release/Microsoft.SharePoint.Client.WorkflowServices.dll \
-	./SpCrawler/bin/Release/log4net.dll 
+	./SpCrawler/bin/Release/Microsoft.SharePoint.Client.WorkflowServices.dll
