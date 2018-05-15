@@ -117,6 +117,7 @@
     <Compile Include="ChangeOutput.cs" />
     <Compile Include="IncrementalFileOutput.cs" />
     <Compile Include="Auth.cs" />
+    <Compile Include="ClientContextExtension.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />

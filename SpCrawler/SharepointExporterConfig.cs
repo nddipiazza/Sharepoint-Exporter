@@ -22,6 +22,8 @@ namespace SpPrefetchIndexBuilder {
     public bool deleteExistingOutputDir;
     public bool excludeFiles;
     public int maxFiles = -1;
+    public int backoffRetries = 5;
+    public int backoffInitialDelay = 1000;
     public JavaScriptSerializer serializer = new JavaScriptSerializer();
     public int maxFileSizeBytes = -1;
     public int fileCount;
@@ -74,6 +76,10 @@ namespace SpPrefetchIndexBuilder {
           password = arg.Split(new Char[] { '=' })[1];
         } else if (arg.StartsWith("--numThreads=", StringComparison.CurrentCulture)) {
           numThreads = int.Parse(arg.Split(new Char[] { '=' })[1]);
+        } else if (arg.StartsWith("--backoffInitialDelay=", StringComparison.CurrentCulture)) {
+          backoffInitialDelay = int.Parse(arg.Split(new Char[] { '=' })[1]);
+        } else if (arg.StartsWith("--backoffRetries=", StringComparison.CurrentCulture)) {
+          backoffRetries = int.Parse(arg.Split(new Char[] { '=' })[1]);
         } else if (arg.StartsWith("--maxFileSizeBytes=", StringComparison.CurrentCulture)) {
           maxFileSizeBytes = int.Parse(arg.Split(new Char[] { '=' })[1]);
         } else if (arg.StartsWith("--maxFiles=", StringComparison.CurrentCulture)) {
@@ -99,7 +105,6 @@ namespace SpPrefetchIndexBuilder {
           help = true;
         }
       }
-
       if (sitesFilePath != null) {
         FileInfo sitesFile = new FileInfo(sitesFilePath);
         if (!sitesFile.Exists) {
@@ -130,6 +135,9 @@ namespace SpPrefetchIndexBuilder {
                           .AppendLine("    --domain=[optional - netbios domain of the user to crawl as]")
                           .AppendLine("    --username=[optional - specify a username to crawl as. must specify domain if using this]")
                           .AppendLine("    --password=[password (not recommended, do not specify to be prompted or use SP_PWD environment variable)]")
+                          .AppendLine("    --numThreads=[optional number of threads to use while fetching. Default 50]")
+                          .AppendLine("    --backoffRetries=[optional number of times to retry after a csom failure. Default 5]")
+                          .AppendLine("    --backoffInitialDelay=[optional number of milliseconds to set as the initial backoff delay. Default 1000]")
                           .AppendLine("    --numThreads=[optional number of threads to use while fetching. Default 50]")
                           .AppendLine("    --excludeUsersAndGroups=[exclude users and groups from the top level site collections. default false]")
                           .AppendLine("    --excludeGroupMembers=[exclude group members from the UsersAndGroups section. default false]")
