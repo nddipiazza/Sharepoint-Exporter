@@ -45,8 +45,9 @@ namespace SpPrefetchIndexBuilder {
       }
 
     }
-    public HttpClient createHttpClient(int fileDownloadTimeoutSecs) {
-      HttpClient httpClient = new HttpClient(httpHandler);
+    public HttpClient createHttpClient(int fileDownloadTimeoutSecs, int numRetries) {
+
+      HttpClient httpClient = new HttpClient(new HttpRetryMessageHandler(httpHandler, numRetries));
       httpClient.Timeout = TimeSpan.FromSeconds(fileDownloadTimeoutSecs);
       return httpClient;
     }

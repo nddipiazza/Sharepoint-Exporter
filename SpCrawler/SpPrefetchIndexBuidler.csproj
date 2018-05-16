@@ -101,6 +101,15 @@
     <Reference Include="Microsoft.SharePoint.Client.WorkflowServices">
       <HintPath>..\packages\Microsoft.SharePointOnline.CSOM.16.1.7618.1200\lib\net45\Microsoft.SharePoint.Client.WorkflowServices.dll</HintPath>
     </Reference>
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.ComponentModel.Composition" />
+    <Reference Include="System.Runtime.InteropServices.RuntimeInformation">
+      <HintPath>..\packages\System.Runtime.InteropServices.RuntimeInformation.4.3.0\lib\net45\System.Runtime.InteropServices.RuntimeInformation.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Numerics" />
+    <Reference Include="Polly">
+      <HintPath>..\packages\Polly.6.0.1\lib\netstandard1.1\Polly.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="SpPrefetchIndexBuilder.cs" />
@@ -118,6 +127,7 @@
     <Compile Include="IncrementalFileOutput.cs" />
     <Compile Include="Auth.cs" />
     <Compile Include="ClientContextExtension.cs" />
+    <Compile Include="HttpRetryMessageHandler.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />

@@ -10,8 +10,8 @@ namespace SpPrefetchIndexBuilder {
   public class SharepointExporterConfig {
     public string authScheme = "NTLM";
     public List<string> sites = new List<string>();
-    public string baseDir;
-    public bool customBaseDir;
+    public string outputDir;
+    public bool customOutputDir;
     public int numThreads = 50;
     public bool excludeUsersAndGroups;
     public bool excludeGroupMembers;
@@ -48,8 +48,8 @@ namespace SpPrefetchIndexBuilder {
       bool help = false;
 
       password = Environment.GetEnvironmentVariable("SP_PWD");
-      baseDir = Directory.GetCurrentDirectory();
-      customBaseDir = false;
+      outputDir = Directory.GetCurrentDirectory();
+      customOutputDir = false;
       string sitesFilePath = null;
 
       foreach (string arg in args) {
@@ -62,8 +62,8 @@ namespace SpPrefetchIndexBuilder {
         } else if (arg.StartsWith("--sharepointUrl=", StringComparison.CurrentCulture)) {
           sites.Add(Util.addSlashToUrlIfNeeded(arg.Split(new Char[] { '=' })[1]));
         } else if (arg.StartsWith("--outputDir=", StringComparison.CurrentCulture)) {
-          baseDir = arg.Split(new Char[] { '=' })[1];
-          customBaseDir = true;
+          outputDir = arg.Split(new Char[] { '=' })[1];
+          customOutputDir = true;
         } else if (arg.StartsWith("--deleteExistingOutputDir=", StringComparison.CurrentCulture)) {
           deleteExistingOutputDir = Boolean.Parse(arg.Split(new Char[] { '=' })[1]);
         } else if (arg.StartsWith("--authScheme=", StringComparison.CurrentCulture)) {

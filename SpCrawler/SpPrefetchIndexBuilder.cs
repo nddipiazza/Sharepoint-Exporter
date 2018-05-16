@@ -31,40 +31,41 @@ public static SharepointExporterConfig config;
     static void Main(string[] args) {
       //ThreadContext.Properties["threadid"] = "MainThread";
       config = new SharepointExporterConfig(args);
-      if (config.customBaseDir && config.deleteExistingOutputDir && Directory.Exists(config.baseDir)) {
-        Util.deleteDirectory(config.baseDir);
+      if (config.customOutputDir && config.deleteExistingOutputDir && Directory.Exists(config.outputDir)) {
+        Util.deleteDirectory(config.outputDir);
       }
-      Directory.CreateDirectory(config.baseDir);
+      Directory.CreateDirectory(config.outputDir);
       if (!config.excludeLists) {
-        Directory.CreateDirectory(config.baseDir + Path.DirectorySeparatorChar + "lists");
+        Directory.CreateDirectory(config.outputDir + Path.DirectorySeparatorChar + "lists");
       }
       if (!config.excludeLists && !config.excludeFiles) {
-        Directory.CreateDirectory(config.baseDir + Path.DirectorySeparatorChar + "files");
+        Directory.CreateDirectory(config.outputDir + Path.DirectorySeparatorChar + "files");
       }
 
       Console.WriteLine("Sharepoint Exporter will run with a max of {0} threads.", config.numThreads);
 
       ServicePointManager.DefaultConnectionLimit = config.numThreads;
 
-      if (!config.isSharepointOnline && config.sites.Count == 1) {
-        Uri onlyUri = new Uri(config.sites[0]);
-        if (onlyUri.PathAndQuery.Equals("/") || onlyUri.PathAndQuery.Length == 0) {
-          string baseUrl = Util.getBaseUrl(config.sites[0]);
-          Console.WriteLine("Only found the top-most root URL of a sharepoint on-premise site {0}. Will attempt to fetch site collections with SiteData.asmx.", config.sites[0]);
-          Auth auth = new Auth(config.sites[0], config.isSharepointOnline, config.domain, config.username, config.password, config.authScheme);
-          SiteCollectionsUtil siteCollectionsUtil = new SiteCollectionsUtil(auth.credentialsCache, baseUrl);
-          foreach (string nextSite in siteCollectionsUtil.GetAllSiteCollections()) {
-            string nextSiteWithSlashAddedIfNeeded = Util.addSlashToUrlIfNeeded(nextSite);
-            if (!Util.addSlashToUrlIfNeeded(config.sites[0]).Equals(nextSiteWithSlashAddedIfNeeded)) {
-              Console.WriteLine("Adding site collection to sites list: {0}", nextSiteWithSlashAddedIfNeeded);
-              config.sites.Add(nextSiteWithSlashAddedIfNeeded);
-            }
-          } 
-        }
-      }
+      // It's better to get the site collections and then call this program with each one. Otherwise a crash due to a single site collection will stop the whole program.
+      //if (!config.isSharepointOnline && config.sites.Count == 1) {
+      //  Uri onlyUri = new Uri(config.sites[0]);
+      //  if (onlyUri.PathAndQuery.Equals("/") || onlyUri.PathAndQuery.Length == 0) {
+      //    string baseUrl = Util.getBaseUrl(config.sites[0]);
+      //    Console.WriteLine("Only found the top-most root URL of a sharepoint on-premise site {0}. Will attempt to fetch site collections with SiteData.asmx.", config.sites[0]);
+      //    Auth auth = new Auth(config.sites[0], config.isSharepointOnline, config.domain, config.username, config.password, config.authScheme);
+      //    SiteCollectionsUtil siteCollectionsUtil = new SiteCollectionsUtil(auth.credentialsCache, baseUrl);
+      //    foreach (string nextSite in siteCollectionsUtil.GetAllSiteCollections()) {
+      //      string nextSiteWithSlashAddedIfNeeded = Util.addSlashToUrlIfNeeded(nextSite);
+      //      if (!Util.addSlashToUrlIfNeeded(config.sites[0]).Equals(nextSiteWithSlashAddedIfNeeded)) {
+      //        Console.WriteLine("Adding site collection to sites list: {0}", nextSiteWithSlashAddedIfNeeded);
+      //        config.sites.Add(nextSiteWithSlashAddedIfNeeded);
+      //      }
+      //    } 
+      //  }
+      //}
       string[] incrementalFiles = null;
-      if (Directory.Exists(config.baseDir)) {
-        incrementalFiles = Directory.GetFiles(config.baseDir, "web*.json", SearchOption.AllDirectories);
+      if (Directory.Exists(config.outputDir)) {
+        incrementalFiles = Directory.GetFiles(config.outputDir, "web*.json", SearchOption.AllDirectories);
       }
       if (incrementalFiles != null && incrementalFiles.Length > 0) {
         SpPrefetchIndexBuilder spib = new SpPrefetchIndexBuilder(incrementalFiles);
@@ -72,6 +73,10 @@ public static SharepointExporterConfig config;
       } else {
         Stopwatch swAll = Stopwatch.StartNew();
         foreach (string site in config.sites) {
+          if (config.maxFiles > 0 && fileCount++ >= config.maxFiles) {
+            Console.WriteLine("Max files exceeded. Will stop fetching sites.");
+            break;
+          }
           SpPrefetchIndexBuilder spib = new SpPrefetchIndexBuilder(site);
           spib.buildFullIndex();
         }
@@ -82,14 +87,14 @@ public static SharepointExporterConfig config;
     public SpPrefetchIndexBuilder(string rootSite) {
       this.rootSite = rootSite;
       auth = new Auth(rootSite, config.isSharepointOnline, config.domain, config.username, config.password, config.authScheme);
-      httpClient = auth.createHttpClient(config.fileDownloadTimeoutSecs);
+      httpClient = auth.createHttpClient(config.fileDownloadTimeoutSecs, config.backoffRetries);
     }
 
     public SpPrefetchIndexBuilder(string[] incrementalFiles) {
       this.incrementalFiles = incrementalFiles;
       rootSite = config.sites[0];
       auth = new Auth(rootSite, config.isSharepointOnline, config.domain, config.username, config.password, config.authScheme);
-      httpClient = auth.createHttpClient(config.fileDownloadTimeoutSecs);
+      httpClient = auth.createHttpClient(config.fileDownloadTimeoutSecs, config.backoffRetries);
     }
 
     public void buildFullIndex() {
@@ -280,6 +285,7 @@ public static SharepointExporterConfig config;
     }
 
     public void FetchFile(FileToFetch toFetchFile) {
+      CheckAbort();
       //ThreadContext.Properties["threadid"] = "FileThread" + Thread.CurrentThread.ManagedThreadId;
 
       if (config.maxFiles > 0 && fileCount++ >= config.maxFiles) {
@@ -349,7 +355,7 @@ public static SharepointExporterConfig config;
       }
 
       string listsFileName = Guid.NewGuid().ToString() + ".json";
-      string listsJsonPath = config.baseDir + Path.DirectorySeparatorChar.ToString() + "lists" + 
+      string listsJsonPath = config.outputDir + Path.DirectorySeparatorChar.ToString() + "lists" + 
                                    Path.DirectorySeparatorChar.ToString() + listsFileName;
       Dictionary<string, object> webDict = webToFetch.webDict;
       webDict.Add("Title", web.Title);
@@ -368,7 +374,9 @@ public static SharepointExporterConfig config;
           roleDefDict.Add("Id", roleDefition.Id);
           roleDefDict.Add("Name", roleDefition.Name);
           roleDefDict.Add("RoleTypeKind", roleDefition.RoleTypeKind.ToString());
-          roleDefsDict.Add(roleDefition.Id.ToString(), roleDefDict);
+          if (!roleDefsDict.ContainsKey(roleDefition.Id.ToString())) {
+            roleDefsDict.Add(roleDefition.Id.ToString(), roleDefDict);
+          }
         }
         webDict.Add("RoleDefinitions", roleDefsDict);
         clientContext.Load(web.RoleAssignments,
@@ -426,11 +434,15 @@ public static SharepointExporterConfig config;
               innerUserDict.Add("PrincipalType", user.PrincipalType.ToString());
               innerUserDict.Add("IsSiteAdmin", "" + user.IsSiteAdmin);
               innerUserDict.Add("Title", user.Title);
-              innerUsersDict.Add(user.LoginName, innerUserDict);
+              if (!innerUserDict.ContainsKey(user.LoginName)) {
+                innerUsersDict.Add(user.LoginName, innerUserDict);
+              }
             }
             groupDict.Add("Users", innerUsersDict);
           }
-          usersAndGroupsDict.Add(group.LoginName, groupDict);
+          if (!usersAndGroupsDict.ContainsKey(group.LoginName)) {
+            usersAndGroupsDict.Add(group.LoginName, groupDict);
+          }
         }
         foreach (User user in users) {
           Dictionary<string, object> userDict = new Dictionary<string, object>();
@@ -439,7 +451,9 @@ public static SharepointExporterConfig config;
           userDict.Add("PrincipalType", user.PrincipalType.ToString());
           userDict.Add("IsSiteAdmin", "" + user.IsSiteAdmin);
           userDict.Add("Title", user.Title);
-          usersAndGroupsDict.Add(user.LoginName, userDict);
+          if (!usersAndGroupsDict.ContainsKey(user.LoginName)) {
+            usersAndGroupsDict.Add(user.LoginName, userDict);
+          }
         }
         webDict.Add("UsersAndGroups", usersAndGroupsDict);
       }
@@ -558,7 +572,7 @@ public static SharepointExporterConfig config;
         itemDict.Add("ListItemType", "List_Item");
         if (config.maxFileSizeBytes < 0 || listItem.FieldValues.ContainsKey("File_x0020_Size") == false ||
             int.Parse((string)listItem.FieldValues["File_x0020_Size"]) < config.maxFileSizeBytes) {
-          string filePath = config.baseDir + Path.DirectorySeparatorChar + "files" + Path.DirectorySeparatorChar +
+          string filePath = config.outputDir + Path.DirectorySeparatorChar + "files" + Path.DirectorySeparatorChar +
                                           Guid.NewGuid().ToString() + Path.GetExtension(listItem.File.Name);
           FileToFetch toDownload = new FileToFetch();
           toDownload.saveToPath = filePath;
@@ -591,7 +605,7 @@ public static SharepointExporterConfig config;
         foreach (Attachment attachmentFile in listItem.AttachmentFiles) {
           Dictionary<string, object> attachmentFileDict = new Dictionary<string, object>();
           attachmentFileDict.Add("Url", Util.getBaseUrl(rootSite) + attachmentFile.ServerRelativeUrl);
-          string filePath = config.baseDir + Path.DirectorySeparatorChar + "files" + Path.DirectorySeparatorChar +
+          string filePath = config.outputDir + Path.DirectorySeparatorChar + "files" + Path.DirectorySeparatorChar +
                                           Guid.NewGuid().ToString() + Path.GetExtension(attachmentFile.FileName);
           FileToFetch toDownload = new FileToFetch();
           toDownload.saveToPath = filePath;
@@ -608,7 +622,7 @@ public static SharepointExporterConfig config;
 
     void WriteWebJson() {
       string siteUrl = Util.addSlashToUrlIfNeeded((string)rootWebDict["Url"]);
-      string webJsonPath = config.baseDir + Path.DirectorySeparatorChar + WebUtility.UrlEncode(siteUrl) + ".json";
+      string webJsonPath = config.outputDir + Path.DirectorySeparatorChar + WebUtility.UrlEncode(siteUrl) + ".json";
       System.IO.File.WriteAllText(webJsonPath, config.serializer.Serialize(rootWebDict));
     }
 
@@ -664,7 +678,9 @@ public static SharepointExporterConfig config;
         } else {
           subWebsDict = (Dictionary<string, object>)parentWebDict["SubWebs"];
         }
-        subWebsDict.Add(url, webToFetch.webDict);
+        if (!subWebsDict.ContainsKey(url)) {
+          subWebsDict.Add(url, webToFetch.webDict);  
+        }
       } else {
         rootWebDict = webToFetch.webDict;
       }
@@ -684,11 +700,15 @@ public static SharepointExporterConfig config;
         roleAssignmentDict.Add("PrincipalType", roleAssignment.Member.PrincipalType.ToString());
         roleAssignmentDict.Add("RoleDefinitionIds", defs);
         roleAssignmentDict.Add("PrincipalId", roleAssignment.PrincipalId);
+        string key;
         if (roleAssignment.Member.PrincipalType.Equals(Microsoft.SharePoint.Client.Utilities.PrincipalType.SecurityGroup) || 
             roleAssignment.Member.PrincipalType.Equals(Microsoft.SharePoint.Client.Utilities.PrincipalType.DistributionList)) {
-          roleAssignmentsDict.Add(roleAssignment.Member.Title, roleAssignmentDict);  // Store these as domain\username
+          key = roleAssignment.Member.Title;
         } else {
-          roleAssignmentsDict.Add(roleAssignment.Member.LoginName, roleAssignmentDict); // Use the normal LoginName for these
+          key = roleAssignment.Member.LoginName; // Store these as domain\username
+        }
+        if (!roleAssignmentsDict.ContainsKey(key)) {
+          roleAssignmentsDict.Add(key, roleAssignmentDict);
         }
       }
       itemDict.Add("RoleAssignments", roleAssignmentsDict);
@@ -725,7 +745,7 @@ public static SharepointExporterConfig config;
       return files;
     }
     public static void CheckAbort() {
-      if (System.IO.File.Exists(config.baseDir + Path.DirectorySeparatorChar + ".." + Path.DirectorySeparatorChar + ".doabort")) {
+      if (System.IO.File.Exists(config.outputDir + Path.DirectorySeparatorChar + ".doabort")) {
         Console.WriteLine("WARNING - The .doabort file was found. Stopping program");
         Environment.Exit(0);
       }
