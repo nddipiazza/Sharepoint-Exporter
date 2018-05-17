@@ -285,7 +285,7 @@ public static SharepointExporterConfig config;
     }
 
     public void FetchFile(FileToFetch toFetchFile) {
-      CheckAbort();
+      CheckStopped();
       //ThreadContext.Properties["threadid"] = "FileThread" + Thread.CurrentThread.ManagedThreadId;
 
       if (config.maxFiles > 0 && fileCount++ >= config.maxFiles) {
@@ -320,7 +320,7 @@ public static SharepointExporterConfig config;
 
     public void FetchWeb(WebToFetch webToFetch) {
       //ThreadContext.Properties["threadid"] = "WebThread" + Thread.CurrentThread.ManagedThreadId;
-      CheckAbort();
+      CheckStopped();
       DateTime now = DateTime.UtcNow;
       string url = webToFetch.url;
       Console.WriteLine("Started fetching web \"{0}\"", url);
@@ -480,7 +480,7 @@ public static SharepointExporterConfig config;
     public void FetchList(ListToFetch listToFetch) {
       try {
         //ThreadContext.Properties["threadid"] = "ListThread" + Thread.CurrentThread.ManagedThreadId;
-        CheckAbort();
+        CheckStopped();
         DateTime now = DateTime.UtcNow;
         ClientContext clientContext = getClientContext(listToFetch.site);
         List list = clientContext.Web.Lists.GetById(listToFetch.listId);
@@ -645,7 +645,7 @@ public static SharepointExporterConfig config;
     }
 
     private void GetWebs(string url, string rootLevelSiteUrl, Dictionary<string, object> parentWebDict) {
-      CheckAbort();
+      CheckStopped();
       ClientContext clientContext = getClientContext(url);
       Web oWebsite = clientContext.Web;
       clientContext.Load(oWebsite, website => website.Webs);
@@ -744,7 +744,8 @@ public static SharepointExporterConfig config;
       }
       return files;
     }
-    public static void CheckAbort() {
+
+    public static void CheckStopped() {
       if (System.IO.File.Exists(config.outputDir + Path.DirectorySeparatorChar + ".stopped")) {
         Console.WriteLine("WARNING - The .stopped file was found. Stopping program");
         Environment.Exit(0);
