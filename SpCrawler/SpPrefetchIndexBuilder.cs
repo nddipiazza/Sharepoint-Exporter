@@ -188,7 +188,7 @@ public static SharepointExporterConfig config;
                              item => item.Folder,
                              item => item.File,
                              item => item.ContentType);
-          ClientContextExtension.ExecuteQueryWithIncrementalRetry(clientContext, config.backoffRetries, config.backoffInitialDelay);
+          clientContext.ExecuteQueryWithIncrementalRetry(config.backoffRetries, config.backoffInitialDelay);
           changeOutput.changeDict["ListItem"] = EmitListItem(clientContext, changeOutput.site, list, listItem);
         }
       }
@@ -224,7 +224,7 @@ public static SharepointExporterConfig config;
       var site = clientContext.Site;
       clientContext.Load(site, s => s.Id, s => s.Url);
       try {
-        ClientContextExtension.ExecuteQueryWithIncrementalRetry(clientContext, config.backoffRetries, config.backoffInitialDelay);
+        clientContext.ExecuteQueryWithIncrementalRetry(config.backoffRetries, config.backoffInitialDelay);
       } catch (Exception ex) {
         Console.WriteLine("ERROR - Could not load site changes for {0} because of Error {1}", url, ex);
         Environment.Exit(0);
@@ -240,7 +240,7 @@ public static SharepointExporterConfig config;
       var web = clientContext.Web;
       clientContext.Load(web, w => w.Id, w => w.ServerRelativeUrl);
       try {
-        ClientContextExtension.ExecuteQueryWithIncrementalRetry(clientContext, config.backoffRetries, config.backoffInitialDelay);
+        clientContext.ExecuteQueryWithIncrementalRetry(config.backoffRetries, config.backoffInitialDelay);
       } catch (Exception ex) {
         Console.WriteLine("ERROR - Could not load web changes for {0} because of Error {1}", url, ex);
         Environment.Exit(0);
@@ -348,7 +348,7 @@ public static SharepointExporterConfig config;
                            website => website.LastItemModifiedDate);
       }
       try {
-        ClientContextExtension.ExecuteQueryWithIncrementalRetry(clientContext, config.backoffRetries, config.backoffInitialDelay);
+        clientContext.ExecuteQueryWithIncrementalRetry(config.backoffRetries, config.backoffInitialDelay);
       } catch (Exception ex) {
         Console.WriteLine("ERROR - Could not load site {0} because of Error {1}", url, ex.Message);
         return;
@@ -388,7 +388,7 @@ public static SharepointExporterConfig config;
                     item => item.Member.PrincipalType,
                     item => item.RoleDefinitionBindings
                 ));
-        ClientContextExtension.ExecuteQueryWithIncrementalRetry(clientContext, config.backoffRetries, config.backoffInitialDelay);
+        clientContext.ExecuteQueryWithIncrementalRetry(config.backoffRetries, config.backoffInitialDelay);
         SetRoleAssignments(web.RoleAssignments, webDict);
       }
 
@@ -415,7 +415,7 @@ public static SharepointExporterConfig config;
           ));
       }
       clientContext.Load(users);
-      ClientContextExtension.ExecuteQueryWithIncrementalRetry(clientContext, config.backoffRetries, config.backoffInitialDelay);
+      clientContext.ExecuteQueryWithIncrementalRetry(config.backoffRetries, config.backoffInitialDelay);
 
       if (webToFetch.isRootLevelSite && !config.excludeUsersAndGroups) {
         Dictionary<string, object> usersAndGroupsDict = new Dictionary<string, object>();
@@ -488,7 +488,7 @@ public static SharepointExporterConfig config;
                            lslist => lslist.Title, lslist => lslist.BaseType,
             lslist => lslist.Description, lslist => lslist.LastItemModifiedDate, lslist => lslist.RootFolder, 
                            lslist => lslist.DefaultDisplayFormUrl);
-        ClientContextExtension.ExecuteQueryWithIncrementalRetry(clientContext, config.backoffRetries, config.backoffInitialDelay);
+        clientContext.ExecuteQueryWithIncrementalRetry(config.backoffRetries, config.backoffInitialDelay);
         Console.WriteLine("Started fetching list site=\"{0}\", listID={1}, listTitle={2}", listToFetch.site, list.Id, list.Title);
         CamlQuery camlQuery = new CamlQuery();
         camlQuery.ViewXml = "<View Scope=\"RecursiveAll\"></View>";
@@ -507,7 +507,7 @@ public static SharepointExporterConfig config;
         clientContext.Load(list.RootFolder.Folders);
         clientContext.Load(list.RootFolder);
         try {
-          ClientContextExtension.ExecuteQueryWithIncrementalRetry(clientContext, config.backoffRetries, config.backoffInitialDelay);
+          clientContext.ExecuteQueryWithIncrementalRetry(config.backoffRetries, config.backoffInitialDelay);
         } catch (Exception e) {
           Console.WriteLine("ERROR - Could not fetch listID=" + list.Id + ", listTitle=" + list.Title + " because of error " + e.Message);
           return;
@@ -535,7 +535,7 @@ public static SharepointExporterConfig config;
                   item => item.Member.PrincipalType,
                   item => item.RoleDefinitionBindings
           ));
-          ClientContextExtension.ExecuteQueryWithIncrementalRetry(clientContext, config.backoffRetries, config.backoffInitialDelay);
+          clientContext.ExecuteQueryWithIncrementalRetry(config.backoffRetries, config.backoffInitialDelay);
           //Console.WriteLine("List {0} has unique role assignments: {1}", listDict["Url"], list.RoleAssignments);
           SetRoleAssignments(list.RoleAssignments, listDict);
         }
@@ -593,14 +593,14 @@ public static SharepointExporterConfig config;
                     item => item.Member.Title,
                     item => item.Member.PrincipalType,
                     item => item.RoleDefinitionBindings));
-        ClientContextExtension.ExecuteQueryWithIncrementalRetry(clientContext, config.backoffRetries, config.backoffInitialDelay);
+        clientContext.ExecuteQueryWithIncrementalRetry(config.backoffRetries, config.backoffInitialDelay);
         //Console.WriteLine("List Item {0} has unique role assignments: {1}", itemDict["Url"], listItem.RoleAssignments);
         SetRoleAssignments(listItem.RoleAssignments, itemDict);
       }
       itemDict.Add("FieldValues", listItem.FieldValues);
       if (listItem.FieldValues.ContainsKey("Attachments") && (bool)listItem.FieldValues["Attachments"]) {
         clientContext.Load(listItem.AttachmentFiles);
-        ClientContextExtension.ExecuteQueryWithIncrementalRetry(clientContext, config.backoffRetries, config.backoffInitialDelay);
+        clientContext.ExecuteQueryWithIncrementalRetry(config.backoffRetries, config.backoffInitialDelay);
         List<Dictionary<string, object>> attachmentFileList = new List<Dictionary<string, object>>();
         foreach (Attachment attachmentFile in listItem.AttachmentFiles) {
           Dictionary<string, object> attachmentFileDict = new Dictionary<string, object>();
@@ -650,7 +650,7 @@ public static SharepointExporterConfig config;
       Web oWebsite = clientContext.Web;
       clientContext.Load(oWebsite, website => website.Webs);
       try {
-        ClientContextExtension.ExecuteQueryWithIncrementalRetry(clientContext, config.backoffRetries, config.backoffInitialDelay);
+        clientContext.ExecuteQueryWithIncrementalRetry(config.backoffRetries, config.backoffInitialDelay);
       } catch (Exception ex) {
         Console.WriteLine("ERROR - Could not load site \"{0}\" because of Error {1}", url, ex.Message);
         return;
@@ -731,7 +731,7 @@ public static SharepointExporterConfig config;
         clientContext.Load(innerFolder);
         clientContext.Load(innerFolder.Files);
         clientContext.Load(innerFolder.Folders);
-        ClientContextExtension.ExecuteQueryWithIncrementalRetry(clientContext, config.backoffRetries, config.backoffInitialDelay);
+        clientContext.ExecuteQueryWithIncrementalRetry(config.backoffRetries, config.backoffInitialDelay);
         Dictionary<string, object> innerFolderDict = new Dictionary<string, object>();
         innerFolderDict.Add("Name", innerFolder.Name);
         innerFolderDict.Add("FileType", "folder");

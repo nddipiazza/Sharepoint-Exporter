@@ -95,6 +95,8 @@ apt install monodevelop monodevelop-versioncontrol
  /usr/bin/monodevelop
 ```
 
+Here is a one-liner to get ready: `sudo apt install mono-devel nuget monodevelop monodevelop-versioncontrol`
+
 * Build using: `build.sh`
 
 * The bundled binary is at `SpCrawler/bin/Release/SpFetcherBundled`
