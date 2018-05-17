@@ -17,10 +17,10 @@ public static SharepointExporterConfig config;
     public Auth auth;
     public string[] incrementalFiles;
     public static HttpClient httpClient;
-    public List<ChangeToFetch> changeFetchList = new List<ChangeToFetch>();
-    public List<ListToFetch> listFetchList = new List<ListToFetch>();
-    public List<WebToFetch> webFetchList = new List<WebToFetch>();
-    public List<FileToFetch> fileFetchList = new List<FileToFetch>();
+    public ConcurrentQueue<ChangeToFetch> changeFetchList = new ConcurrentQueue<ChangeToFetch>();
+    public ConcurrentQueue<ListToFetch> listFetchList = new ConcurrentQueue<ListToFetch>();
+    public ConcurrentQueue<WebToFetch> webFetchList = new ConcurrentQueue<WebToFetch>();
+    public ConcurrentQueue<FileToFetch> fileFetchList = new ConcurrentQueue<FileToFetch>();
     public Dictionary<string, object> rootWebDict;
     public ConcurrentQueue<ListsOutput> listsOutput = new ConcurrentQueue<ListsOutput>();
     public ConcurrentQueue<IncrementalFileOutput> incrementalFileOutputs = new ConcurrentQueue<IncrementalFileOutput>();
@@ -144,7 +144,7 @@ public static SharepointExporterConfig config;
       foreach (string incrementalFile in incrementalFiles) {
         ChangeToFetch changeToFetch = new ChangeToFetch();
         changeToFetch.incrementalFilePath = incrementalFile;
-        changeFetchList.Add(changeToFetch);  
+        changeFetchList.Enqueue(changeToFetch);  
       }
       Console.WriteLine("Fetching incremental changes.");
       Parallel.ForEach(
@@ -468,7 +468,7 @@ public static SharepointExporterConfig config;
         listToFetch.listsDict = listsDict;
         listToFetch.site = url;
         Console.WriteLine("Adding list Id={0}, url={1}", list.Id, url);
-        listFetchList.Add(listToFetch);
+        listFetchList.Enqueue(listToFetch);
       }
       ListsOutput nextListOutput = new ListsOutput();
       nextListOutput.jsonPath = listsJsonPath;
@@ -577,7 +577,7 @@ public static SharepointExporterConfig config;
           FileToFetch toDownload = new FileToFetch();
           toDownload.saveToPath = filePath;
           toDownload.serverRelativeUrl = listItem.File.ServerRelativeUrl;
-          fileFetchList.Add(toDownload);
+          fileFetchList.Enqueue(toDownload);
           itemDict.Add("ExportPath", filePath);
         }
       } else if (listItem.Folder.ServerObjectIsNull == false) {
@@ -610,7 +610,7 @@ public static SharepointExporterConfig config;
           FileToFetch toDownload = new FileToFetch();
           toDownload.saveToPath = filePath;
           toDownload.serverRelativeUrl = attachmentFile.ServerRelativeUrl;
-          fileFetchList.Add(toDownload);
+          fileFetchList.Enqueue(toDownload);
           attachmentFileDict.Add("ExportPath", filePath);
           attachmentFileDict.Add("FileName", attachmentFile.FileName);
           attachmentFileList.Add(attachmentFileDict);
@@ -684,7 +684,7 @@ public static SharepointExporterConfig config;
       } else {
         rootWebDict = webToFetch.webDict;
       }
-      webFetchList.Add(webToFetch);
+      webFetchList.Enqueue(webToFetch);
     }
 
     static void SetRoleAssignments(RoleAssignmentCollection roleAssignments, Dictionary<string, object> itemDict) {
