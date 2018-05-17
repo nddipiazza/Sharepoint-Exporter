@@ -745,8 +745,8 @@ public static SharepointExporterConfig config;
       return files;
     }
     public static void CheckAbort() {
-      if (System.IO.File.Exists(config.outputDir + Path.DirectorySeparatorChar + ".doabort")) {
-        Console.WriteLine("WARNING - The .doabort file was found. Stopping program");
+      if (System.IO.File.Exists(config.outputDir + Path.DirectorySeparatorChar + ".stopped")) {
+        Console.WriteLine("WARNING - The .stopped file was found. Stopping program");
         Environment.Exit(0);
       }
     }
