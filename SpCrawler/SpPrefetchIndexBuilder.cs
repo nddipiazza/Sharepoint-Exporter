@@ -578,8 +578,10 @@ public static SharepointExporterConfig config;
           FileToFetch toDownload = new FileToFetch();
           toDownload.saveToPath = filePath;
           toDownload.serverRelativeUrl = listItem.File.ServerRelativeUrl;
-          fileFetchList.Enqueue(toDownload);
-          itemDict.Add("ExportPath", filePath);
+          if (!config.excludeFiles) {
+            fileFetchList.Enqueue(toDownload);
+            itemDict.Add("ExportPath", filePath);  
+          }
         }
       } else if (listItem.Folder.ServerObjectIsNull == false) {
         itemDict.Add("ListItemType", "Folder");
@@ -611,8 +613,10 @@ public static SharepointExporterConfig config;
           FileToFetch toDownload = new FileToFetch();
           toDownload.saveToPath = filePath;
           toDownload.serverRelativeUrl = attachmentFile.ServerRelativeUrl;
-          fileFetchList.Enqueue(toDownload);
-          attachmentFileDict.Add("ExportPath", filePath);
+          if (!config.excludeFiles) {
+            fileFetchList.Enqueue(toDownload);
+            attachmentFileDict.Add("ExportPath", filePath);  
+          }
           attachmentFileDict.Add("FileName", attachmentFile.FileName);
           attachmentFileList.Add(attachmentFileDict);
         }
