@@ -102,6 +102,7 @@ public static SharepointExporterConfig config;
         Console.WriteLine("Building full index for site \"{0}\"", rootSite);
 
         Stopwatch swWeb = Stopwatch.StartNew();
+        Console.WriteLine("Getting the root site webs...");
         GetWebs(rootSite, rootSite, null);
         Parallel.ForEach(
           webFetchList,
@@ -276,7 +277,7 @@ public static SharepointExporterConfig config;
         if (previousSubWebs.Count > 0) {
           Console.WriteLine("Web {0} has {1} subwebs. Processing them recursively.", previousIncrementalDict["Url"], previousSubWebs.Count);
           foreach (string subWebUrl in previousSubWebs.Keys) {
-            newSubWebs.Add(subWebUrl, FetchWebChanges((Dictionary<string, object>)previousSubWebs[subWebUrl]));
+            newSubWebs.Add(Util.addSlashToUrlIfNeeded(subWebUrl), FetchWebChanges((Dictionary<string, object>)previousSubWebs[subWebUrl]));
           }
         }
         newIncrementalDict.Add("SubWebs", newSubWebs);
@@ -322,7 +323,7 @@ public static SharepointExporterConfig config;
       //ThreadContext.Properties["threadid"] = "WebThread" + Thread.CurrentThread.ManagedThreadId;
       CheckStopped();
       DateTime now = DateTime.UtcNow;
-      string url = webToFetch.url;
+      string url = Util.addSlashToUrlIfNeeded(webToFetch.url);
       Console.WriteLine("Started fetching web \"{0}\"", url);
       ClientContext clientContext = getClientContext(url);
 
@@ -524,7 +525,7 @@ public static SharepointExporterConfig config;
           itemsList.Add(EmitListItem(clientContext, listToFetch.site, list, listItem));
         }
         listDict.Add("Items", itemsList);
-        listDict.Add("Url", rootSite + list.RootFolder.ServerRelativeUrl);
+        listDict.Add("Url", Util.getBaseUrl(listToFetch.site) + list.RootFolder.ServerRelativeUrl);
         //listDict.Add("Files", IndexFolder(clientContext, list.RootFolder));
         if (list.HasUniqueRoleAssignments) {
           clientContext.Load(list.RoleAssignments,
@@ -644,7 +645,8 @@ public static SharepointExporterConfig config;
       }
     }
 
-    private void GetWebs(string url, string rootLevelSiteUrl, Dictionary<string, object> parentWebDict) {
+    void GetWebs(string url, string rootLevelSiteUrl, Dictionary<string, object> parentWebDict) {
+      Console.WriteLine("Get webs for {0} - root site {1}", url, rootLevelSiteUrl);
       CheckStopped();
       ClientContext clientContext = getClientContext(url);
       Web oWebsite = clientContext.Web;
