@@ -3,6 +3,6 @@ using System.Collections.Generic;
 
 namespace SpPrefetchIndexBuilder {
   class ChangeToFetch {
-    public string incrementalFilePath;
+    public Dictionary<string, object> siteDict;
   }
 }

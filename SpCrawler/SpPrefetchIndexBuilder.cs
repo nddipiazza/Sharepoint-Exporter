@@ -8,27 +8,28 @@ using System.Net.Http;
 using System.IO;
 using System.Collections.Concurrent;
 using System.Linq;
+using System.Data;
 
 namespace SpPrefetchIndexBuilder {
   class SpPrefetchIndexBuilder {
-public static SharepointExporterConfig config;
-    public static int fileCount = 0;
-    public string rootSite;
-    public Auth auth;
-    public string[] incrementalFiles;
-    public static HttpClient httpClient;
-    public ConcurrentQueue<ChangeToFetch> changeFetchList = new ConcurrentQueue<ChangeToFetch>();
-    public ConcurrentQueue<ListToFetch> listFetchList = new ConcurrentQueue<ListToFetch>();
-    public ConcurrentQueue<WebToFetch> webFetchList = new ConcurrentQueue<WebToFetch>();
-    public ConcurrentQueue<FileToFetch> fileFetchList = new ConcurrentQueue<FileToFetch>();
-    public Dictionary<string, object> rootWebDict;
-    public ConcurrentQueue<ListsOutput> listsOutput = new ConcurrentQueue<ListsOutput>();
-    public ConcurrentQueue<IncrementalFileOutput> incrementalFileOutputs = new ConcurrentQueue<IncrementalFileOutput>();
+    static SharepointExporterConfig config;
+    static HttpClient httpClient;
+    static int fileCount = 0;
+    Auth auth;
+    string rootSite;
+    ConcurrentQueue<ChangeToFetch> changeFetchList = new ConcurrentQueue<ChangeToFetch>();
+    ConcurrentQueue<ListToFetch> listFetchList = new ConcurrentQueue<ListToFetch>();
+    ConcurrentQueue<WebToFetch> webFetchList = new ConcurrentQueue<WebToFetch>();
+    ConcurrentQueue<FileToFetch> fileFetchList = new ConcurrentQueue<FileToFetch>();
+    ConcurrentDictionary<string, object> websDict = new ConcurrentDictionary<string, object>();
+    ConcurrentQueue<ListsOutput> listsOutput = new ConcurrentQueue<ListsOutput>();
+    ConcurrentQueue<IncrementalFileOutput> incrementalFileOutputs = new ConcurrentQueue<IncrementalFileOutput>();
     SharepointChanges sharepointChanges = new SharepointChanges();
 
     public List<string> ignoreListNames = new List<string>();
 
     static void Main(string[] args) {
+
       //ThreadContext.Properties["threadid"] = "MainThread";
       config = new SharepointExporterConfig(args);
       if (config.customOutputDir && config.deleteExistingOutputDir && Directory.Exists(config.outputDir)) {
@@ -63,24 +64,14 @@ public static SharepointExporterConfig config;
       //    } 
       //  }
       //}
-      string[] incrementalFiles = null;
-      if (Directory.Exists(config.outputDir)) {
-        incrementalFiles = Directory.GetFiles(config.outputDir, "web*.json", SearchOption.AllDirectories);
-      }
-      if (incrementalFiles != null && incrementalFiles.Length > 0) {
-        SpPrefetchIndexBuilder spib = new SpPrefetchIndexBuilder(incrementalFiles);
-        spib.BuildIncrementalIndex();
-      } else {
-        Stopwatch swAll = Stopwatch.StartNew();
-        foreach (string site in config.sites) {
-          if (config.maxFiles > 0 && fileCount++ >= config.maxFiles) {
-            Console.WriteLine("Max files exceeded. Will stop fetching sites.");
-            break;
-          }
-          SpPrefetchIndexBuilder spib = new SpPrefetchIndexBuilder(site);
-          spib.buildFullIndex();
+      Stopwatch swAll = Stopwatch.StartNew();
+      foreach (string site in config.sites) {
+        if (config.maxFiles > 0 && fileCount++ >= config.maxFiles) {
+          Console.WriteLine("Max files exceeded. Will stop fetching sites.");
+          break;
         }
-        Console.WriteLine("Full export complete! Took {0} milliseconds to export {1} sites.", swAll.ElapsedMilliseconds, config.sites.Count);
+        SpPrefetchIndexBuilder spib = new SpPrefetchIndexBuilder(site);
+        spib.buildIndex();
       }
     }
 
@@ -90,85 +81,107 @@ public static SharepointExporterConfig config;
       httpClient = auth.createHttpClient(config.fileDownloadTimeoutSecs, config.backoffRetries);
     }
 
-    public SpPrefetchIndexBuilder(string[] incrementalFiles) {
-      this.incrementalFiles = incrementalFiles;
-      rootSite = config.sites[0];
-      auth = new Auth(rootSite, config.isSharepointOnline, config.domain, config.username, config.password, config.authScheme);
-      httpClient = auth.createHttpClient(config.fileDownloadTimeoutSecs, config.backoffRetries);
-    }
-
-    public void buildFullIndex() {
-      try {
-        Console.WriteLine("Building full index for site \"{0}\"", rootSite);
-
-        Stopwatch swWeb = Stopwatch.StartNew();
-        Console.WriteLine("Getting the root site webs...");
-        GetWebs(rootSite, rootSite, null);
-        Parallel.ForEach(
-          webFetchList,
-          new ParallelOptions { MaxDegreeOfParallelism = config.numThreads },
-          toFetchWeb => { FetchWeb(toFetchWeb); }
-        );
-        WriteWebJson();
-        Console.WriteLine("Web fetch of {0} complete. Took {1} milliseconds.", rootSite, swWeb.ElapsedMilliseconds);
-
-        if (!config.excludeLists) {
-          Stopwatch swLists = Stopwatch.StartNew();
-          Parallel.ForEach(
-            listFetchList,
-            new ParallelOptions { MaxDegreeOfParallelism = config.numThreads },
-            toFetchList => { FetchList(toFetchList); }
-          );
-          WriteAllListsToJson();
-          Console.WriteLine("Lists metadata dump of {0} complete. Took {1} milliseconds.",
-                            rootSite, swLists.ElapsedMilliseconds);
-          if (!config.excludeFiles) {
-            Console.WriteLine("Fetching the files recieved during the index building");
-            Parallel.ForEach(
-              fileFetchList,
-              new ParallelOptions { MaxDegreeOfParallelism = config.numThreads },
-              toFetchFile => { FetchFile(toFetchFile); }
-            );
-          } else {
-            Console.WriteLine("WARNING - Not fetching files because they are --excludeFiles=true");
-          }
-        } else {
-          Console.WriteLine("Not fetching lists because they are --excludeLists=true");
+    public void buildIndex() {
+      FileInfo rootSiteFileInfo = new FileInfo(GetWebJsonPath(rootSite));
+      if (rootSiteFileInfo.Exists) {
+        Console.WriteLine("Fetching incremental changes for site {0}.", rootSite);
+        List<Dictionary<string, object>> sites = getAllSitesFromIncrementalFile(rootSiteFileInfo);
+        foreach (Dictionary<string, object> innerSite in sites) {
+          Console.WriteLine("Found inner site {0}.", innerSite["Url"]);
+          ChangeToFetch changeToFetch = new ChangeToFetch();
+          changeToFetch.siteDict = innerSite;
+          changeFetchList.Enqueue(changeToFetch);
         }
-      } catch (Exception anyException) {
-        Console.WriteLine("Prefetch index building failed for site {0} due to {1}", rootSite, anyException);
-        Environment.Exit(1);
+        Parallel.ForEach(
+          changeFetchList,
+          new ParallelOptions { MaxDegreeOfParallelism = config.numThreads },
+          toFetchChange => { FetchChanges(toFetchChange); }
+        );
+        Console.WriteLine("Done fetching incremental changes. Processing each change.");
+        Parallel.ForEach(
+          sharepointChanges.changeOutputs,
+          new ParallelOptions { MaxDegreeOfParallelism = config.numThreads },
+          toProcessChangeOutput => { ProcessChange(toProcessChangeOutput); }
+        );
+        Console.WriteLine("Fetching the files recieved from processing changes.");
+        Parallel.ForEach(
+          fileFetchList,
+          new ParallelOptions { MaxDegreeOfParallelism = config.numThreads },
+          toFetchFile => { FetchFile(toFetchFile); }
+        );
+        Console.WriteLine("Done processing changes. Writing changes to output json files.");
+        foreach (IncrementalFileOutput incrementalFileOutput in incrementalFileOutputs) {
+          System.IO.File.WriteAllText(incrementalFileOutput.incrementalFilePath, config.serializer.Serialize(incrementalFileOutput.dict));
+          Console.WriteLine("Wrote incremental file {0}", incrementalFileOutput.incrementalFilePath);
+        }
+      } else {
+        try {
+          Console.WriteLine("Building full index for site \"{0}\"", rootSite);
+
+          Stopwatch swWeb = Stopwatch.StartNew();
+          GetWebs(rootSite, rootSite, null);
+          Parallel.ForEach(
+            webFetchList,
+            new ParallelOptions { MaxDegreeOfParallelism = config.numThreads },
+            toFetchWeb => { FetchWeb(toFetchWeb); }
+          );
+          Console.WriteLine("Web fetch of {0} complete. Took {1} milliseconds.", rootSite, swWeb.ElapsedMilliseconds);
+
+          if (!config.excludeLists) {
+            Stopwatch swLists = Stopwatch.StartNew();
+            Parallel.ForEach(
+              listFetchList,
+              new ParallelOptions { MaxDegreeOfParallelism = config.numThreads },
+              toFetchList => { FetchList(toFetchList); }
+            );
+            Console.WriteLine("Lists metadata dump of {0} complete. Took {1} milliseconds.",
+                              rootSite, swLists.ElapsedMilliseconds);
+            if (!config.excludeFiles) {
+              Console.WriteLine("Fetching the files recieved during the index building");
+              Parallel.ForEach(
+                fileFetchList,
+                new ParallelOptions { MaxDegreeOfParallelism = config.numThreads },
+                toFetchFile => { FetchFile(toFetchFile); }
+              );
+            } else {
+              Console.WriteLine("WARNING - Not fetching files because they are --excludeFiles=true");
+            }
+          } else {
+            Console.WriteLine("Not fetching lists because they are --excludeLists=true");
+          }
+          WriteAllListsToJson();
+          WriteWebJsons();
+        } catch (Exception anyException) {
+          Console.WriteLine("Prefetch index building failed for site {0} due to {1}", rootSite, anyException);
+          Environment.Exit(1);
+        }
       }
     }
 
-    public void BuildIncrementalIndex() {
-      foreach (string incrementalFile in incrementalFiles) {
-        ChangeToFetch changeToFetch = new ChangeToFetch();
-        changeToFetch.incrementalFilePath = incrementalFile;
-        changeFetchList.Enqueue(changeToFetch);  
+    List<Dictionary<string, object>> getAllSitesFromIncrementalFile(FileInfo incrementalFile) {
+      string incrementalFileContents;
+      using (StreamReader reader = new StreamReader(incrementalFile.FullName)) {
+        incrementalFileContents = reader.ReadToEnd();
       }
-      Console.WriteLine("Fetching incremental changes.");
-      Parallel.ForEach(
-        changeFetchList,
-        new ParallelOptions { MaxDegreeOfParallelism = config.numThreads },
-        toFetchChange => { FetchChanges(toFetchChange); }
-      );
-      Console.WriteLine("Done fetching incremental changes. Processing each change.");
-      Parallel.ForEach(
-        sharepointChanges.changeOutputs,
-        new ParallelOptions { MaxDegreeOfParallelism = config.numThreads },
-        toProcessChangeOutput => { ProcessChange(toProcessChangeOutput); }
-      );
-      Console.WriteLine("Fetching the files recieved from processing changes.");
-      Parallel.ForEach(
-        fileFetchList,
-        new ParallelOptions { MaxDegreeOfParallelism = config.numThreads },
-        toFetchFile => { FetchFile(toFetchFile); }
-      );
-      Console.WriteLine("Done processing changes. Writing changes to output json files.");
-      foreach (IncrementalFileOutput incrementalFileOutput in incrementalFileOutputs) {
-        System.IO.File.WriteAllText(incrementalFileOutput.incrementalFilePath, config.serializer.Serialize(incrementalFileOutput.dict));
-        Console.WriteLine("Wrote incremental file {0}", incrementalFileOutput.incrementalFilePath);
+      Dictionary<string, object> siteDict = (config.serializer.DeserializeObject(incrementalFileContents) as Dictionary<string, object>);
+      List<Dictionary<string, object>> sites = new List<Dictionary<string, object>>();
+      getAllInnerSites(siteDict, sites);
+      return sites;
+    }
+
+    void getAllInnerSites(Dictionary<string, object> siteDict, List<Dictionary<string, object>> sites) {
+      string siteUrl = (string)siteDict["Url"];
+      sites.Add(siteDict);
+      if (siteDict.ContainsKey("SubWebs")) {
+        foreach (object nextSiteObj in (object[])siteDict["SubWebs"]) {
+          string innerSiteUrl = Util.addSlashToUrlIfNeeded((string)nextSiteObj);
+          string webFileContents;
+          using (StreamReader reader = new StreamReader(config.outputDir + Path.DirectorySeparatorChar.ToString() + WebUtility.UrlEncode(innerSiteUrl) + ".json")) {
+            webFileContents = reader.ReadToEnd();
+          }
+          Dictionary<string, object> innerWebDict = (config.serializer.DeserializeObject(webFileContents) as Dictionary<string, object>);
+          getAllInnerSites(innerWebDict, sites);
+        }
       }
     }
 
@@ -176,36 +189,38 @@ public static SharepointExporterConfig config;
       //ThreadContext.Properties["threadid"] = "ChangeThread" + Thread.CurrentThread.ManagedThreadId;
       if (changeOutput.change is ChangeItem) {
         ChangeItem changeItem = (ChangeItem)changeOutput.change;
+        Guid listId = changeItem.ListId;
+        int itemId = changeItem.ItemId;
+        ClientContext clientContext = getClientContext(changeOutput.site);
         if (changeItem.ChangeType == ChangeType.Add || changeItem.ChangeType == ChangeType.Update) {
-          Guid listId = changeItem.ListId;
-          int itemId = changeItem.ItemId;
-          ClientContext clientContext = getClientContext(changeOutput.site);
           var list = clientContext.Web.Lists.GetById(listId);
-          ListItem listItem = list.GetItemById(itemId);
-          clientContext.Load(list, lsList => lsList.Id, lsList => lsList.DefaultDisplayFormUrl);
-          clientContext.Load(listItem, item => item.Id,
-                             item => item.DisplayName,
-                             item => item.HasUniqueRoleAssignments,
-                             item => item.Folder,
-                             item => item.File,
-                             item => item.ContentType);
-          clientContext.ExecuteQueryWithIncrementalRetry(config.backoffRetries, config.backoffInitialDelay);
-          changeOutput.changeDict["ListItem"] = EmitListItem(clientContext, changeOutput.site, list, listItem);
+          CamlQuery camlQuery = new CamlQuery();
+          camlQuery.ViewXml = string.Format("<View Scope=\"RecursiveAll\"><Query><Where><Eq><FieldRef Name='ID' /><Value Type='Number'>{0}</Value></Eq></Where></Query></View>", itemId);
+          ListItemCollection collListItem = list.GetItems(camlQuery);
+          LoadListItemCollection(clientContext, collListItem);
+          try {
+            clientContext.ExecuteQueryWithIncrementalRetry(config.backoffRetries, config.backoffInitialDelay);
+          } catch (Exception e) {
+            Console.WriteLine("ERROR - Could not fetch listID=" + list.Id + ", itemID=" + itemId + ", listTitle=" + list.Title + " because of error " + e);
+            return;
+          }
+          if (collListItem.Count > 0) {
+            changeOutput.changeDict["ListItem"] = EmitListItem(clientContext, changeOutput.site, list, collListItem[0]);
+          }
+        } else if (changeItem.ChangeType == ChangeType.DeleteObject) {
+          Dictionary<string, object> listItemDeleteChangeDict = new Dictionary<string, object>();
+          listItemDeleteChangeDict["ListId"] = listId.ToString();
+          listItemDeleteChangeDict["ItemId"] = itemId.ToString();
+          changeOutput.changeDict["ListItem"] = listItemDeleteChangeDict;
         }
       }
     }
 
     public void FetchChanges(ChangeToFetch changeToFetch) {
       //ThreadContext.Properties["threadid"] = "ChangeThread" + Thread.CurrentThread.ManagedThreadId;
-      string incrementalFileContents;
-      using (StreamReader reader = new StreamReader(changeToFetch.incrementalFilePath)) {
-        incrementalFileContents = reader.ReadToEnd();
-      }
-      Dictionary<string, object> previousIncrementalDict = 
-        (config.serializer.DeserializeObject(incrementalFileContents) as Dictionary<string, object>);
       IncrementalFileOutput incrementalFileOutput = new IncrementalFileOutput();
-      incrementalFileOutput.dict = FetchWebChanges(previousIncrementalDict);
-      incrementalFileOutput.incrementalFilePath = changeToFetch.incrementalFilePath;
+      incrementalFileOutput.incrementalFilePath = GetWebJsonPath((string)changeToFetch.siteDict["Url"]);
+      incrementalFileOutput.dict = FetchWebChanges(changeToFetch.siteDict);
       incrementalFileOutputs.Enqueue(incrementalFileOutput);
     }
 
@@ -215,27 +230,32 @@ public static SharepointExporterConfig config;
       newIncrementalDict.Add("Url", url);
 
       Dictionary<string, object> changesDict = new Dictionary<string, object>();
-      newIncrementalDict.Add("changes", changesDict);
+      newIncrementalDict.Add("Changes", changesDict);
 
       DateTime fetchedDate = (DateTime)previousIncrementalDict["FetchedDate"];
       Console.WriteLine("Processing incremental changes for URL {0} getting changes since {1}", url, 
                      TimeZoneInfo.ConvertTimeFromUtc(fetchedDate, TimeZoneInfo.Local));
       newIncrementalDict["FetchedDate"] = DateTime.UtcNow;
       ClientContext clientContext = getClientContext(url);
-      var site = clientContext.Site;
-      clientContext.Load(site, s => s.Id, s => s.Url);
-      try {
-        clientContext.ExecuteQueryWithIncrementalRetry(config.backoffRetries, config.backoffInitialDelay);
-      } catch (Exception ex) {
-        Console.WriteLine("ERROR - Could not load site changes for {0} because of Error {1}", url, ex);
-        Environment.Exit(0);
-      }
-      ChangeCollection changeCollection = SharepointChanges.GetChanges(clientContext, site, fetchedDate);
       DateTime maxTime = DateTime.MinValue;
-      //foreach (Change change in changeCollection) {
-      //  sharepointChanges.AddChangeToIncrementalDict(changesDict, "site", site.Url, change);
-      //  if (change.Time.CompareTo(maxTime) > 0) {
-      //    maxTime = change.Time;
+
+      // TODO - Site collection level changes need to be queried here.
+      //var site = clientContext.Site;
+      //// If this is a site collection URL, get the changes at the site level.
+      //clientContext.Load(site, s => s.Id, s => s.Url);
+      //try {
+      //  clientContext.ExecuteQueryWithIncrementalRetry(config.backoffRetries, config.backoffInitialDelay);
+      //} catch (Exception ex) {
+      //  Console.WriteLine("ERROR - Could not load site changes for {0} because of Error {1}", url, ex);
+      //  Environment.Exit(0);
+      //}
+      //if (Util.addSlashToUrlIfNeeded(site.Url).Equals(Util.addSlashToUrlIfNeeded(url))) {
+      //  ChangeCollection siteChangeCollection = SharepointChanges.GetChanges(clientContext, site, fetchedDate);
+      //  foreach (Change change in siteChangeCollection) {
+      //    sharepointChanges.AddChangeToIncrementalDict(changesDict, "site", site.Url, change);
+      //    if (change.Time.CompareTo(maxTime) > 0) {
+      //      maxTime = change.Time;
+      //    }
       //  }
       //}
       var web = clientContext.Web;
@@ -246,10 +266,12 @@ public static SharepointExporterConfig config;
         Console.WriteLine("ERROR - Could not load web changes for {0} because of Error {1}", url, ex);
         Environment.Exit(0);
       }
-      changeCollection = SharepointChanges.GetChanges(clientContext, web, fetchedDate);
-      foreach (Change change in changeCollection) {
-        sharepointChanges.AddChangeToIncrementalDict(changesDict, "web", 
-                                                     Util.getBaseUrl(clientContext.Site.Url) + web.ServerRelativeUrl, change);
+      ChangeCollection webChangeCollection = SharepointChanges.GetChanges(clientContext, web, fetchedDate);
+      foreach (Change change in webChangeCollection) {
+        sharepointChanges.AddChangeToIncrementalDict(changesDict,
+                                                     "web", 
+                                                     Util.getBaseUrl(url) + web.ServerRelativeUrl,
+                                                     change);
         if (change.Time.CompareTo(maxTime) > 0) {
           maxTime = change.Time;
         }
@@ -262,25 +284,13 @@ public static SharepointExporterConfig config;
           newIncrementalDict["FetchedDate"] = maxTime.AddSeconds(1);
         }
         Console.WriteLine("Fetched changes for {0}. NumChangesFound={1}, MostRecentChange={2}, NextIncrementalTimestamp={3}",
-                          site.Url,
+                          url,
                           changesDict.Count,
                           TimeZoneInfo.ConvertTimeFromUtc(maxTime, TimeZoneInfo.Local),
                           TimeZoneInfo.ConvertTimeFromUtc((DateTime)previousIncrementalDict["FetchedDate"], TimeZoneInfo.Local));
       } else {
-        Console.WriteLine("No incremental changes found for {0}. Next incremental timestamp will be: {1}", site.Url, 
+        Console.WriteLine("No incremental changes found for {0}. Next incremental timestamp will be: {1}", url, 
                        TimeZoneInfo.ConvertTimeFromUtc((DateTime)previousIncrementalDict["FetchedDate"], TimeZoneInfo.Local));
-      }
-
-      if (previousIncrementalDict.ContainsKey("SubWebs")) {
-        Dictionary<string, object> previousSubWebs = (Dictionary<string, object>)previousIncrementalDict["SubWebs"];
-        Dictionary<string, object> newSubWebs = new Dictionary<string, object>();
-        if (previousSubWebs.Count > 0) {
-          Console.WriteLine("Web {0} has {1} subwebs. Processing them recursively.", previousIncrementalDict["Url"], previousSubWebs.Count);
-          foreach (string subWebUrl in previousSubWebs.Keys) {
-            newSubWebs.Add(Util.addSlashToUrlIfNeeded(subWebUrl), FetchWebChanges((Dictionary<string, object>)previousSubWebs[subWebUrl]));
-          }
-        }
-        newIncrementalDict.Add("SubWebs", newSubWebs);
       }
       return newIncrementalDict;
     }
@@ -494,23 +504,14 @@ public static SharepointExporterConfig config;
         CamlQuery camlQuery = new CamlQuery();
         camlQuery.ViewXml = "<View Scope=\"RecursiveAll\"></View>";
         ListItemCollection collListItem = list.GetItems(camlQuery);
-        clientContext.Load(collListItem);
-        clientContext.Load(collListItem,
-            items => items.Include(
-                item => item.Id,
-                item => item.DisplayName,
-                item => item.HasUniqueRoleAssignments,
-                item => item.Folder,
-                item => item.File,
-                item => item.ContentType
-                ));
         clientContext.Load(list.RootFolder.Files);
         clientContext.Load(list.RootFolder.Folders);
         clientContext.Load(list.RootFolder);
+        LoadListItemCollection(clientContext, collListItem);
         try {
           clientContext.ExecuteQueryWithIncrementalRetry(config.backoffRetries, config.backoffInitialDelay);
         } catch (Exception e) {
-          Console.WriteLine("ERROR - Could not fetch listID=" + list.Id + ", listTitle=" + list.Title + " because of error " + e.Message);
+          Console.WriteLine("ERROR - Could not fetch listID=" + list.Id + ", listTitle=" + list.Title + " because of error " + e);
           return;
         }
         Dictionary<string, object> listDict = new Dictionary<string, object>();
@@ -551,6 +552,19 @@ public static SharepointExporterConfig config;
       }
     }
 
+    private void LoadListItemCollection(ClientContext clientContext, ListItemCollection collListItem) {
+      clientContext.Load(collListItem);
+      clientContext.Load(collListItem,
+          items => items.Include(
+              item => item.Id,
+              item => item.DisplayName,
+              item => item.HasUniqueRoleAssignments,
+              item => item.Folder,
+              item => item.File,
+              item => item.ContentType
+              ));
+    }
+
     Dictionary<string, object> EmitListItem(ClientContext clientContext, string siteUrl, List parentList, ListItem listItem) {
       Dictionary<string, object> itemDict = new Dictionary<string, object>();
       itemDict.Add("DisplayName", listItem.DisplayName);
@@ -563,8 +577,9 @@ public static SharepointExporterConfig config;
                         siteUrl, parentList.Id, listItem.Id, listItem.DisplayName, excep);
       }
       itemDict.Add("ContentTypeName", contentTypeName);
-      if (contentTypeName.Equals("Document") && listItem.FieldValues.ContainsKey("FileRef")) {
+      if (listItem.FieldValues.ContainsKey("FileRef")) {
         itemDict.Add("Url", Util.getBaseUrl(rootSite) + listItem["FileRef"]);
+        itemDict.Add("ViewUrl", Util.getBaseUrl(rootSite) + parentList.DefaultDisplayFormUrl + string.Format("?ID={0}", listItem.Id));
       } else {
         itemDict.Add("Url", Util.getBaseUrl(rootSite) + parentList.DefaultDisplayFormUrl + string.Format("?ID={0}", listItem.Id));
       }
@@ -625,10 +640,19 @@ public static SharepointExporterConfig config;
       return itemDict;
     }
 
-    void WriteWebJson() {
-      string siteUrl = Util.addSlashToUrlIfNeeded((string)rootWebDict["Url"]);
-      string webJsonPath = config.outputDir + Path.DirectorySeparatorChar + WebUtility.UrlEncode(siteUrl) + ".json";
-      System.IO.File.WriteAllText(webJsonPath, config.serializer.Serialize(rootWebDict));
+    string GetWebJsonPath(string siteUrl) {
+      return config.outputDir + Path.DirectorySeparatorChar + WebUtility.UrlEncode(siteUrl) + ".json";
+    }
+
+    /// <summary>
+    /// Writes the web jsons out one per file.
+    /// </summary>
+    void WriteWebJsons() {
+      foreach (Dictionary<string, object> webDict in websDict.Values) {
+        string siteUrl = Util.addSlashToUrlIfNeeded((string)webDict["Url"]);
+        string webJsonPath = GetWebJsonPath(siteUrl);
+        System.IO.File.WriteAllText(webJsonPath, config.serializer.Serialize(webDict));  
+      }
     }
 
     public ClientContext getClientContext(string site) {
@@ -677,19 +701,18 @@ public static SharepointExporterConfig config;
         Console.WriteLine("Not fetching sub sites because --excludeSubSites=true");
       }
       if (parentWebDict != null) {
-        Dictionary<string, object> subWebsDict = null;
+        List<string> subWebs = null;
         if (!parentWebDict.ContainsKey("SubWebs")) {
-          subWebsDict = new Dictionary<string, object>();
-          parentWebDict.Add("SubWebs", subWebsDict);
+          subWebs = new List<string>();
+          parentWebDict.Add("SubWebs", subWebs);
         } else {
-          subWebsDict = (Dictionary<string, object>)parentWebDict["SubWebs"];
+          subWebs = (List<string>)parentWebDict["SubWebs"];
         }
-        if (!subWebsDict.ContainsKey(url)) {
-          subWebsDict.Add(url, webToFetch.webDict);  
+        if (!subWebs.Contains(url)) {
+          subWebs.Add(url);
         }
-      } else {
-        rootWebDict = webToFetch.webDict;
       }
+      websDict.TryAdd(url, webToFetch.webDict);
       webFetchList.Enqueue(webToFetch);
     }
 
