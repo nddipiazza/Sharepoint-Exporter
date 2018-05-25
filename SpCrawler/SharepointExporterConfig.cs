@@ -22,6 +22,8 @@ namespace SpPrefetchIndexBuilder {
     public bool deleteExistingOutputDir;
     public bool excludeFiles;
     public int maxFiles = -1;
+    public int maxListItems = -1;
+    public int maxSites = -1;
     public int backoffRetries = 5;
     public int backoffInitialDelay = 1000;
     public JavaScriptSerializer serializer = new JavaScriptSerializer();
@@ -84,6 +86,10 @@ namespace SpPrefetchIndexBuilder {
           maxFileSizeBytes = int.Parse(arg.Split(new Char[] { '=' })[1]);
         } else if (arg.StartsWith("--maxFiles=", StringComparison.CurrentCulture)) {
           maxFiles = int.Parse(arg.Split(new Char[] { '=' })[1]);
+        } else if (arg.StartsWith("--maxListItems=", StringComparison.CurrentCulture)) {
+          maxListItems = int.Parse(arg.Split(new Char[] { '=' })[1]);
+        } else if (arg.StartsWith("--maxSites=", StringComparison.CurrentCulture)) {
+          maxSites = int.Parse(arg.Split(new Char[] { '=' })[1]);
         } else if (arg.StartsWith("--fileDownloadTimeoutSecs=", StringComparison.CurrentCulture)) {
           fileDownloadTimeoutSecs = int.Parse(arg.Split(new Char[] { '=' })[1]);
         } else if (arg.StartsWith("--excludeUsersAndGroups=", StringComparison.CurrentCulture)) {
@@ -147,7 +153,10 @@ namespace SpPrefetchIndexBuilder {
                           .AppendLine("    --excludeFiles=[Do not download the files from the results] ")
                           .AppendLine("    --excludeRoleAssignments=[if true will not store obtain role assignment metadata. default false] ")
                           .AppendLine("    --maxFileSizeBytes=[optional maximum file size. Must be > 0. Default unlimited]")
-                          .AppendLine("    --maxFiles=[if > 0 will only download this many files before quitting. default -1]"));
+                          .AppendLine("    --maxFiles=[if > 0 will only download this many files. default -1]")
+                          .AppendLine("    --maxListItems=[if > 0 will only fetch this many list items. default -1]")
+                          .AppendLine("    --maxSites=[if > 0 will only fetch this many sites. default -1]")
+                         );
         Environment.Exit(0);
       }
       Regex r = new Regex(@"(?<Protocol>\w+):\/\/.+\.sharepoint\.com.*");

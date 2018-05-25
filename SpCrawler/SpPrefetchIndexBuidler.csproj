@@ -134,6 +134,7 @@
     <None Include="packages.config" />
     <None Include="sites-spo.txt" />
     <None Include="sites-172.16.11.15.txt" />
+    <None Include="sites.txt" />
   </ItemGroup>
   <ItemGroup>
     <BootstrapperPackage Include=".NETFramework,Version=v4.6.1">
